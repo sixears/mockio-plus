@@ -1,0 +1,31 @@
+name:                mockio-plus
+
+-- PVP summary:      +-+------- breaking API changes
+--                   | | +----- non-breaking API additions
+--                   | | | +--- code changes with no API change
+version:             0.0.1.0
+synopsis:            MonadIO, Mocked, Logged, with Text.
+description:         MonadIO, Mocked, Logged, with Text.
+cabal-version:       >= 1.10
+license:             MIT
+license-file:        LICENSE
+author:              Martyn J. Pearce
+maintainer:          haskell@sixears.com
+build-type:          Simple
+library
+  ghc-options:        -O2 -W -Wall -fhelpful-errors
+  exposed-modules:    MockIO.File
+
+  other-modules:
+  default-extensions: NoImplicitPrelude
+  build-depends:      base, base-unicode-symbols, data-textual, logging-effect
+                    , text
+
+                    , fpath      >= 1.0.6.0
+                    , log-plus   >= 0.0.1.0
+                    , mockio     >= 0.0.1.0
+                    , mockio-log >= 0.0.1.1
+                    , tfmt       >= 0.2.3.0
+
+  hs-source-dirs:      src
+  default-language:    Haskell2010
