@@ -5,7 +5,9 @@
 {-# LANGUAGE ViewPatterns      #-}
 
 module MockIO.File
-  ( openFile, openFileBinary, openFileUTF8
+  ( access, chmod, lstat, stat, writable
+
+  , openFile, openFileBinary, openFileUTF8
   , openFileReadBinary, openFileReadWriteBinary, openFileReadWriteExBinary
   , openFileReadWriteNoTruncBinary
   , openFileWriteBinary, openFileWriteExBinary, openFileWriteNoTruncBinary
@@ -39,27 +41,31 @@ module MockIO.File
   )
 where
 
-import Prelude ( undefined )
+import Prelude ( div, rem )
 
 -- base --------------------------------
 
-import qualified  System.IO
-
-import Control.Monad           ( join, return )
-import Data.Function           ( ($) )
+import Control.Applicative     ( pure )
+import Control.Monad           ( forM_, join, return )
+import Data.Bits               ( (.&.) )
+import Data.Bool               ( otherwise )
+import Data.Either             ( Either( Left, Right ) )
+import Data.Function           ( ($), (&) )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, maybe )
-import Control.Monad.IO.Class  ( MonadIO, liftIO )
+import Control.Monad.IO.Class  ( MonadIO )
 import System.IO               ( Handle, IO, IOMode( AppendMode, ReadMode
                                                    , ReadWriteMode, WriteMode )
                                , NewlineMode, TextEncoding
                                , char8, nativeNewlineMode, noNewlineTranslation
-                               , stdout, utf8
+                               , utf8
                                )
 import System.Posix.Types      ( FileMode )
+import Text.Show               ( show )
 
 -- base-unicode-symbols ----------------
 
 import Data.Function.Unicode  ( (∘) )
+import Data.Monoid.Unicode  ( (⊕) )
 
 -- bytestring --------------------------
 
@@ -69,16 +75,20 @@ import Data.ByteString  ( ByteString )
 
 -- data-default ------------------------
 
-import Data.Default  ( Default )
+import Data.Default  ( Default( def ) )
 
 -- data-textual ------------------------
 
-import Data.Textual  ( toString, toText )
+import Data.Textual  ( Printable )
+
+-- exceptions --------------------------
+
+import Control.Monad.Catch ( MonadMask )
 
 -- fpath -------------------------------
 
-import FPath.AbsFile  ( AbsFile, absfile )
-import FPath.File     ( File( FileA ), FileAs( _File_ ) )
+import FPath.AsFilePath  ( AsFilePath )
+import FPath.File        ( File, FileAs( _File_ ) )
 
 -- lens --------------------------------
 
@@ -86,51 +96,59 @@ import Control.Lens.Review  ( review )
 
 -- log-plus ----------------------------
 
-import Log  ( Log )
+import Log  ( CSOpt( NoCallStack ), Log, logIO, logToStderr )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( MonadLog, Severity( Informational, Notice ) )
+import Control.Monad.Log  ( LoggingT, MonadLog
+                          , Severity( Informational, Notice ) )
 
-import MockIO  ( DoMock( NoMock ) )
+-- mockio ------------------------------
+
+import MockIO  ( DoMock( DoMock, NoMock ) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, MockIOClass, mkIOL )
-import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ) )
+import MockIO.Log      ( HasDoMock, MockIOClass, doMock, mkIOL )
+import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ), ioClass )
 
 -- monadio-error -----------------------
 
 import MonadError           ( ѥ )
-import MonadError.IO        ( asIOError, asIOErrorY )
-import MonadError.IO.Error  ( AsIOError, IOError, squashInappropriateTypeT )
+import MonadError.IO.Error  ( AsIOError, IOError )
 
 -- monadio-plus ------------------------
 
 import qualified  MonadIO.File
-import MonadIO.File  ( appendFlags, devnull, fileFoldLinesH, readFlags
+import MonadIO.File  ( AccessMode( ACCESS_W )
+                     , appendFlags, fileFoldLinesH, readFlags
                      , readWriteFlags, readWriteExFlags, readWriteNoTruncFlags
                      , writeFlags, writeExFlags, writeNoTruncFlags
                      )
 
 -- more-unicode ------------------------
 
-import Data.MoreUnicode.Functor  ( (⊳), (⩺) )
+import Data.MoreUnicode.Bool     ( 𝔹 )
+import Data.MoreUnicode.Functor  ( (⩺) )
+import Data.MoreUnicode.Lens     ( (⊢) )
 import Data.MoreUnicode.Maybe    ( 𝕄 )
 import Data.MoreUnicode.Text     ( 𝕋 )
 
 -- mtl ---------------------------------
 
-import Control.Monad.Except  ( ExceptT, MonadError )
+import Control.Monad.Except  ( ExceptT, MonadError, throwError )
 
 -- text --------------------------------
 
-import qualified  Data.Text.IO
+import qualified  Data.Text.IO  as  TextIO
 
-import Data.Text                 ( Text, unpack )
-import Data.Text.IO              ( hGetContents, hPutStr )
+import Data.Text                 ( pack )
 import Data.Text.Encoding        ( decodeUtf8With )
 import Data.Text.Encoding.Error  ( lenientDecode )
+
+-- time --------------------------------
+
+import Data.Time.Clock.POSIX  ( posixSecondsToUTCTime )
 
 -- tfmt --------------------------------
 
@@ -138,23 +156,35 @@ import Text.Fmt  ( fmt, fmtT )
 
 -- unix --------------------------------
 
-import System.Posix.IO  ( OpenFileFlags )
+import System.Posix.IO     ( OpenFileFlags )
+import System.Posix.Files  ( FileStatus
+                           , accessTimeHiRes, modificationTimeHiRes
+                           , statusChangeTimeHiRes
+                           , deviceID, fileGroup, fileID, fileMode, fileOwner
+                           , fileSize, isBlockDevice, isCharacterDevice
+                           , isDirectory, isNamedPipe, isRegularFile, isSocket
+                           , isSymbolicLink, linkCount
+                           , specialDeviceID
+                           )
 
 --------------------------------------------------------------------------------
 
-doFile ∷ (MonadIO μ, MonadLog (Log ω) μ,
+doFile ∷ (MonadIO μ, MonadLog (Log ω) μ, Printable ε, MonadError ε μ,
           Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
-         IO α → IOMode → Severity → 𝕄 (File → 𝕋) → α → γ → DoMock → μ α
-doFile go mode sev msgf a (review _File_ → fn) mck =
-  let (mt,md) = case mode of
-                  ReadMode      → ("read ", IORead)
-                  ReadWriteMode → ("rewrt", IOWrite)
-                  WriteMode     → ("write", IOWrite)
-                  AppendMode    → ("appnd", IOWrite)
+         ExceptT ε IO α → IOMode → Severity → 𝕄 (File → 𝕋) → α → γ → DoMock
+       → μ α
+doFile io mode sev msgf mock_value (review _File_ → fn) mck =
+  let (mt,ioc) = case mode of
+                   ReadMode      → ("read ", IORead)
+                   ReadWriteMode → ("rewrt", IOWrite)
+                   WriteMode     → ("write", IOWrite)
+                   AppendMode    → ("appnd", IOWrite)
       msg     = fromMaybe ([fmt|%t %T|] mt) msgf fn
-   in mkIOL sev md msg a go mck
+   in -- mkIOL sev ioc msg mock_value io mck
+      mkIOLMER sev ioc msg Nothing mock_value io mck
 
-openFile ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+openFile ∷ (MonadIO μ,
+            AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
             Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
            TextEncoding → NewlineMode → IOMode → OpenFileFlags → Severity
          → 𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock → μ Handle
@@ -164,7 +194,8 @@ openFile enc nlm mode flags sev msgf perms a (review _File_ → fn) mck =
 
 --------------------
 
-openFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+openFileBinary ∷ (MonadIO μ,
+                  AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
                   Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
                  IOMode → OpenFileFlags → Severity → 𝕄 (File → 𝕋)
                → 𝕄 FileMode → μ Handle → γ → DoMock → μ Handle
@@ -172,7 +203,8 @@ openFileBinary = openFile char8 noNewlineTranslation
 
 --------------------
 
-openFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+openFileUTF8 ∷ (MonadIO μ,
+                AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
                 Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
                IOMode → OpenFileFlags → Severity → 𝕄 (File → 𝕋) → 𝕄 FileMode
              → μ Handle → γ → DoMock → μ Handle
@@ -180,13 +212,15 @@ openFileUTF8 = openFile utf8 nativeNewlineMode
 
 ----------------------------------------
 
-openFileReadBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
-                      Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
+openFileReadBinary ∷ (MonadIO μ,
+                      AsIOError ε, Printable ε, MonadError ε μ,
+                      Default ω, HasIOClass ω, HasDoMock ω, MonadLog (Log ω) μ,
+                      FileAs γ) ⇒
                      μ Handle → γ → DoMock → μ Handle
 openFileReadBinary =
   openFileBinary ReadMode readFlags Informational Nothing Nothing
 
-openFileReadWriteBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                            MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                            HasDoMock ω, FileAs γ) ⇒
                           𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
@@ -194,7 +228,8 @@ openFileReadWriteBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileReadWriteBinary = openFileBinary ReadWriteMode readWriteFlags Notice
 
 
-openFileReadWriteExBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteExBinary ∷ (MonadIO μ,
+                             AsIOError ε, Printable ε, MonadError ε μ,
                              MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                              HasDoMock ω, FileAs γ) ⇒
                             𝕄 (File → 𝕋) → FileMode → μ Handle → γ → DoMock
@@ -202,7 +237,8 @@ openFileReadWriteExBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileReadWriteExBinary msgf perms =
   openFileBinary ReadWriteMode readWriteExFlags Notice msgf (Just perms)
 
-openFileReadWriteNoTruncBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteNoTruncBinary ∷ (MonadIO μ,
+                                  AsIOError ε, Printable ε, MonadError ε μ,
                                   MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                                   HasDoMock ω, FileAs γ) ⇒
                                  𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ
@@ -210,14 +246,14 @@ openFileReadWriteNoTruncBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileReadWriteNoTruncBinary =
   openFileBinary ReadWriteMode readWriteNoTruncFlags Notice
 
-openFileWriteBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
                     → μ Handle
 openFileWriteBinary = openFileBinary WriteMode writeFlags Notice
 
-openFileWriteExBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteExBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                          MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                          HasDoMock ω, FileAs γ) ⇒
                         𝕄 (File → 𝕋) → FileMode → μ Handle → γ → DoMock
@@ -225,14 +261,15 @@ openFileWriteExBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileWriteExBinary msgf perms =
   openFileBinary WriteMode writeExFlags Notice msgf (Just perms)
 
-openFileWriteNoTruncBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteNoTruncBinary ∷ (MonadIO μ,
+                              AsIOError ε, Printable ε, MonadError ε μ,
                               MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                               HasDoMock ω, FileAs γ) ⇒
                              𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
                            → μ Handle
 openFileWriteNoTruncBinary = openFileBinary WriteMode writeNoTruncFlags Notice
 
-openFileAppendBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileAppendBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
@@ -241,19 +278,21 @@ openFileAppendBinary = openFileBinary AppendMode appendFlags Notice
 
 ----------------------------------------
 
-openFileReadUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
-                    Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
+openFileReadUTF8 ∷ (MonadIO μ,
+                    AsIOError ε, Printable ε, MonadError ε μ,
+                    Default ω, HasIOClass ω, HasDoMock ω, MonadLog (Log ω) μ,
+                    FileAs γ) ⇒
                    μ Handle → γ → DoMock → μ Handle
 openFileReadUTF8 = openFileUTF8 ReadMode readFlags Informational Nothing Nothing
 
-openFileReadWriteUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                          MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                          HasDoMock ω, FileAs γ) ⇒
                         𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
                       → μ Handle
 openFileReadWriteUTF8 = openFileUTF8 ReadWriteMode readWriteFlags Notice
 
-openFileReadWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                            MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                            HasDoMock ω, FileAs γ) ⇒
                           𝕄 (File → 𝕋) → FileMode → μ Handle → γ → DoMock
@@ -261,7 +300,8 @@ openFileReadWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileReadWriteExUTF8 msgf perms =
   openFileUTF8 ReadWriteMode readWriteExFlags Notice msgf (Just perms)
 
-openFileReadWriteNoTruncUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileReadWriteNoTruncUTF8 ∷ (MonadIO μ,
+                                AsIOError ε, Printable ε, MonadError ε μ,
                                 MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                                 HasDoMock ω, FileAs γ) ⇒
                                𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ
@@ -269,14 +309,14 @@ openFileReadWriteNoTruncUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileReadWriteNoTruncUTF8 =
   openFileUTF8 ReadWriteMode readWriteNoTruncFlags Notice
 
-openFileWriteUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                      MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                      HasDoMock ω, FileAs γ) ⇒
                     𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
                   → μ Handle
 openFileWriteUTF8 = openFileUTF8 WriteMode writeFlags Notice
 
-openFileWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       𝕄 (File → 𝕋) → FileMode → μ Handle → γ → DoMock
@@ -284,14 +324,14 @@ openFileWriteExUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
 openFileWriteExUTF8 msgf perms =
   openFileUTF8 WriteMode writeExFlags Notice msgf (Just perms)
 
-openFileWriteNoTruncUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileWriteNoTruncUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                             MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                             HasDoMock ω, FileAs γ) ⇒
                            𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
                          → μ Handle
 openFileWriteNoTruncUTF8 = openFileUTF8 WriteMode writeNoTruncFlags Notice
 
-openFileAppendUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+openFileAppendUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                       MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                       HasDoMock ω, FileAs γ) ⇒
                      𝕄 (File → 𝕋) → 𝕄 FileMode → μ Handle → γ → DoMock
@@ -300,7 +340,8 @@ openFileAppendUTF8 = openFileUTF8 AppendMode appendFlags Notice
 
 ----------------------------------------
 
-withFile ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+withFile ∷ (MonadIO μ,
+            AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
             Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
            TextEncoding → NewlineMode → IOMode → OpenFileFlags → Severity
          → 𝕄 (File → 𝕋) → 𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -310,7 +351,8 @@ withFile enc nlm mode flags sev msgf perms a (review _File_ → fn) io mck =
 
 ----------------------------------------
 
-withFileME ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+withFileME ∷ (MonadIO μ,
+              AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
               Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
              TextEncoding → NewlineMode → IOMode → OpenFileFlags → Severity
            → 𝕄 (File → 𝕋) → 𝕄 FileMode → μ α → γ → (Handle → ExceptT ε IO α)
@@ -321,13 +363,15 @@ withFileME enc nlm mode flags sev msgf perms a (review _File_ → fn) io mck =
 
 ----------------------------------------
 
-withFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+withFileBinary ∷ (MonadIO μ,
+                  AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
                   Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
                  IOMode → OpenFileFlags → Severity → 𝕄 (File → 𝕋) → 𝕄 FileMode
                → μ α → γ → (Handle → IO α) → DoMock → μ α
 withFileBinary = withFile char8 noNewlineTranslation
 
-withFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
+withFileUTF8 ∷ (MonadIO μ,
+                AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
                 Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
                IOMode → OpenFileFlags → Severity → 𝕄 (File → 𝕋) → 𝕄 FileMode
              → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -335,7 +379,7 @@ withFileUTF8 = withFile utf8 nativeNewlineMode
 
 ----------------------------------------
 
-withReadFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                       MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
                       FileAs γ) ⇒
                      μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -344,7 +388,7 @@ withReadFileBinary =
 
 ----------
 
-withReadWriteFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                            MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                            HasDoMock ω, FileAs γ) ⇒
                           𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -353,7 +397,8 @@ withReadWriteFileBinary =
 
 ----------
 
-withReadWriteExFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteExFileBinary ∷ (MonadIO μ,
+                             AsIOError ε, Printable ε, MonadError ε μ,
                              MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                              HasDoMock ω, FileAs γ) ⇒
                             FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -362,7 +407,8 @@ withReadWriteExFileBinary perms =
 
 ----------
 
-withReadWriteNoTruncFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteNoTruncFileBinary ∷ (MonadIO μ,
+                                  AsIOError ε, Printable ε, MonadError ε μ,
                                   MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                                   HasDoMock ω, FileAs γ) ⇒
                                  𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock
@@ -372,7 +418,7 @@ withReadWriteNoTruncFileBinary =
 
 ----------
 
-withWriteFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -381,7 +427,7 @@ withWriteFileBinary =
 
 ----------
 
-withWriteExFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteExFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                          MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                          HasDoMock ω, FileAs γ) ⇒
                         FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -390,7 +436,8 @@ withWriteExFileBinary perms =
 
 ----------
 
-withWriteNoTruncFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteNoTruncFileBinary ∷ (MonadIO μ,
+                              AsIOError ε, Printable ε, MonadError ε μ,
                               MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                               HasDoMock ω, FileAs γ) ⇒
                              𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock
@@ -400,7 +447,7 @@ withWriteNoTruncFileBinary =
 
 ----------
 
-withAppendFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withAppendFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -409,15 +456,17 @@ withAppendFileBinary =
 
 ----------------------------------------
 
-withReadFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, MonadLog (Log ω) μ,
-                    Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
+withReadFileUTF8 ∷ (MonadIO μ,
+                    AsIOError ε, Printable ε, MonadError ε μ,
+                    Default ω, HasIOClass ω, HasDoMock ω, MonadLog (Log ω) μ,
+                    FileAs γ) ⇒
                    μ α → γ → (Handle → IO α) → DoMock → μ α
 withReadFileUTF8 =
   withFileUTF8 ReadMode readFlags Informational Nothing Nothing
 
 ----------
 
-withReadWriteFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                          MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                          HasDoMock ω, FileAs γ) ⇒
                         𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -426,7 +475,7 @@ withReadWriteFileUTF8 =
 
 ----------
 
-withReadWriteExFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteExFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                            MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                            HasDoMock ω, FileAs γ) ⇒
                           FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -435,7 +484,8 @@ withReadWriteExFileUTF8 perms =
 
 ----------
 
-withReadWriteNoTruncFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withReadWriteNoTruncFileUTF8 ∷ (MonadIO μ,
+                                AsIOError ε, Printable ε, MonadError ε μ,
                                 MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                                 HasDoMock ω, FileAs γ) ⇒
                                𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock
@@ -445,7 +495,7 @@ withReadWriteNoTruncFileUTF8 =
 
 ----------
 
-withWriteFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                      MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                      HasDoMock ω, FileAs γ) ⇒
                     𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -454,7 +504,7 @@ withWriteFileUTF8 =
 
 ----------
 
-withWriteExFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteExFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                        MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                        HasDoMock ω, FileAs γ) ⇒
                       FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -463,7 +513,7 @@ withWriteExFileUTF8 perms =
 
 ----------
 
-withWriteNoTruncFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withWriteNoTruncFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                             MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                             HasDoMock ω, FileAs γ) ⇒
                            𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -472,7 +522,7 @@ withWriteNoTruncFileUTF8 =
 
 ----------
 
-withAppendFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ,
+withAppendFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ,
                       MonadLog (Log ω) μ, Default ω, HasIOClass ω,
                       HasDoMock ω, FileAs γ) ⇒
                      𝕄 FileMode → μ α → γ → (Handle → IO α) → DoMock → μ α
@@ -482,14 +532,15 @@ withAppendFileUTF8 =
 ----------------------------------------
 
 {- | Read a file as bytes. -}
-readFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+readFileBinary ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                   MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                  μ ByteString → γ → DoMock → μ ByteString
 readFileBinary a fn = withReadFileBinary a fn BS.hGetContents
 
 ----------
 
-writeFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeFileBinary ∷ (MonadIO μ,
+                   AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                    MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                   𝕄 FileMode → γ → ByteString → DoMock → μ ()
 writeFileBinary perms fn txt =
@@ -497,7 +548,8 @@ writeFileBinary perms fn txt =
 
 ----------
 
-writeNoTruncFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeNoTruncFileBinary ∷ (MonadIO μ,
+                          AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                           MonadLog (Log ω) μ, Default ω, HasDoMock ω,
                           HasIOClass ω) ⇒
                          𝕄 FileMode → γ → ByteString → DoMock → μ ()
@@ -506,7 +558,8 @@ writeNoTruncFileBinary perms fn txt =
 
 ----------
 
-writeExFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeExFileBinary ∷ (MonadIO μ,
+                     AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                      MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                     FileMode → γ → ByteString → DoMock → μ ()
 writeExFileBinary perms fn txt =
@@ -514,7 +567,8 @@ writeExFileBinary perms fn txt =
 
 ----------
 
-appendFileBinary ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+appendFileBinary ∷ (MonadIO μ,
+                    AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                    MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                   𝕄 FileMode → γ → ByteString → DoMock → μ ()
 appendFileBinary perms fn txt =
@@ -522,59 +576,171 @@ appendFileBinary perms fn txt =
 
 ----------------------------------------
 
-readFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+readFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                 MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
-               μ ByteString → γ → DoMock → μ ByteString
-readFileUTF8 a fn = withReadFileUTF8 a fn BS.hGetContents
+               μ 𝕋 → γ → DoMock → μ 𝕋
+readFileUTF8 a fn = withReadFileUTF8 a fn TextIO.hGetContents
 
 ----------
 
-readFileUTF8Lenient ∷ (AsIOError ε, MonadError ε μ, MonadIO μ, FileAs γ,
-                       MonadLog (Log ω) μ, Default ω, HasDoMock ω,
-                       HasIOClass ω) ⇒
+readFileUTF8Lenient ∷ (MonadIO μ,
+                       AsIOError ε, Printable ε, MonadError ε μ,
+                       MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω,
+                       FileAs γ) ⇒
                       μ 𝕋 → γ → DoMock → μ 𝕋
 readFileUTF8Lenient a fn =
   withReadFileUTF8 a fn (decodeUtf8With lenientDecode ⩺ BS.hGetContents)
 
 ----------
 
-writeFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                  MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
-                𝕄 FileMode → γ → ByteString → DoMock → μ ()
+                𝕄 FileMode → γ → 𝕋 → DoMock → μ ()
 writeFileUTF8 perms fn txt =
-  withWriteFileUTF8 perms (return ()) fn (\ h → BS.hPutStr h txt)
+  withWriteFileUTF8 perms (return ()) fn (\ h → TextIO.hPutStr h txt)
 
 ----------
 
-writeNoTruncFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeNoTruncFileUTF8 ∷ (MonadIO μ,
+                        AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                         MonadLog (Log ω) μ, Default ω, HasDoMock ω,
                         HasIOClass ω) ⇒
-                       𝕄 FileMode → γ → ByteString → DoMock → μ ()
+                       𝕄 FileMode → γ → 𝕋 → DoMock → μ ()
 writeNoTruncFileUTF8 perms fn txt =
-  withWriteNoTruncFileUTF8 perms (return ()) fn (\ h → BS.hPutStr h txt)
+  withWriteNoTruncFileUTF8 perms (return ()) fn (\ h → TextIO.hPutStr h txt)
 
 ----------
 
-writeExFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+writeExFileUTF8 ∷ (MonadIO μ,
+                   AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                    MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
-                  FileMode → γ → ByteString → DoMock → μ ()
+                  FileMode → γ → 𝕋 → DoMock → μ ()
 writeExFileUTF8 perms fn txt =
-  withWriteExFileUTF8 perms (return ()) fn (\ h → BS.hPutStr h txt)
+  withWriteExFileUTF8 perms (return ()) fn (\ h → TextIO.hPutStr h txt)
 
 ----------
 
-appendFileUTF8 ∷ (MonadIO μ, AsIOError ε, MonadError ε μ, FileAs γ,
+appendFileUTF8 ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, FileAs γ,
                   MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
-                 𝕄 FileMode → γ → ByteString → DoMock → μ ()
+                 𝕄 FileMode → γ → 𝕋 → DoMock → μ ()
 appendFileUTF8 perms fn txt =
-  withAppendFileUTF8 perms (return ()) fn (\ h → BS.hPutStr h txt)
+  withAppendFileUTF8 perms (return ()) fn (\ h → TextIO.hPutStr h txt)
 
 ----------------------------------------
 
 {- | Work over a file, accumulating results, line-by-line. -}
-fileFoldLinesUTF8 ∷ (MonadIO μ, FileAs γ, AsIOError ε, MonadError ε μ,
+fileFoldLinesUTF8 ∷ (MonadIO μ, FileAs γ,
+                     AsIOError ε, Printable ε, MonadError ε μ,
                      MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                      α → (α → 𝕋 → IO α) → μ α → γ → DoMock → μ α
 fileFoldLinesUTF8 a io w fn = withReadFileUTF8 w fn $ fileFoldLinesH a io
+
+----------------------------------------
+
+pp ∷ DoMock → 𝕋 → 𝕋
+pp NoMock t = t
+pp DoMock t = "(" ⊕ t ⊕ ")"
+
+access ∷ (MonadIO μ,
+          AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+          Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+         Severity → AccessMode → 𝕄 𝔹 → ρ → DoMock → μ (𝕄 𝔹)
+access sev amode mock_value fn = do
+  let msg = [fmt|access %T %w|] fn amode
+      vmsg = Just $ maybe ["Nothing"] (pure ∘ pack ∘ show)
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.access amode fn)
+
+----------------------------------------
+
+{- | Rough 'n' ready stat output.  Feel free to improve this as time allows,
+     it's just a textual representation, nothing should be parsing it. -}
+pstat ∷ FileStatus → [𝕋]
+pstat s =
+  let dev = specialDeviceID s
+   in [ [fmt|Size %d\t%t|]
+          (fileSize s) (dtype s)
+      , [fmt|Device %w\tInode: %d\tLinks: %d\t Device type: %d,%d|]
+          (deviceID s) (fileID s) (linkCount s) (dev `div` 256) (dev `rem` 256)
+      , [fmt|Access: %04o\tUid: %d\tGid: %d|]
+          (fileMode s .&. 0o7777) (fileOwner s) (fileGroup s)
+      , [fmt|Access: %Z|] (posixSecondsToUTCTime $ accessTimeHiRes s)
+      , [fmt|Modify: %Z|] (posixSecondsToUTCTime $ modificationTimeHiRes s)
+      , [fmt|Change: %Z|] (posixSecondsToUTCTime $ statusChangeTimeHiRes s)
+      ]
+
+dtype ∷ FileStatus → 𝕋
+dtype s | isBlockDevice     s = "block device"
+        | isCharacterDevice s = "character device"
+        | isDirectory       s = "directory"
+        | isNamedPipe       s = "named pipe"
+        | isRegularFile     s = "regular file"
+        | isSocket          s = "socket"
+        | isSymbolicLink    s = "symbolic link"
+        | otherwise           = "unknown"
+      
+logit ∷ (MonadIO μ, MonadMask μ) ⇒
+        ExceptT IOError (LoggingT (Log MockIOClass) μ) α → μ (Either IOError α)
+logit = logToStderr NoCallStack [] ∘ ѥ
+          
+_stat ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+         Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+        (ρ → ExceptT ε IO (𝕄 FileStatus))
+      → Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+_stat s sev mock_value fn mck =
+  let msg  = [fmt|stat  %T|] fn
+      vmsg = Just $ maybe ["Nothing"] pstat
+   in mkIOLMER sev IORead msg vmsg mock_value (s fn) mck
+
+--------------------
+
+stat ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+        Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+       Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+stat = _stat MonadIO.File.stat
+ 
+----------
+
+lstat ∷ (MonadIO μ,
+         AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+         Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+        Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+lstat = _stat MonadIO.File.lstat 
+
+----------------------------------------
+
+writable ∷ (MonadIO μ,
+            AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+            Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+           Severity → 𝕄 𝔹 → ρ → DoMock → μ (𝕄 𝔹)
+writable sev = access sev ACCESS_W
+
+----------------------------------------
+
+{- | Log a mockable IO Action, including its result (if provided a suitable
+     formatter), and any exception it throws. -}
+mkIOLMER ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+            Default ω, HasIOClass ω, HasDoMock ω) ⇒
+            Severity → IOClass → 𝕋 → 𝕄 (α → [𝕋]) → α
+         → ExceptT ε IO α → DoMock → μ α
+mkIOLMER sev ioclass msg valmsg mock_value io mck = do
+  let stg  = def & ioClass ⊢ ioclass & doMock ⊢ mck
+  result ← mkIOL sev ioclass msg (Right mock_value) (ѥ io) mck
+  case result of
+    Left  e → do logIO sev stg (pp mck $ [fmtT|%t FAILED: %T|] msg e)
+                 throwError e
+    Right r → do case valmsg of
+                   Nothing → return ()
+                   Just v  → forM_ (v r) $ \ t →
+                     logIO sev stg (pp mck $ [fmtT|%t: %t|] msg t)
+                 return r
+
+
+chmod ∷ (MonadIO μ,
+         AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+         Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+        Severity → FileMode → ρ → DoMock → μ ()
+chmod sev perms fn =
+  let msg = [fmt|chmod %T %04o|] fn perms
+   in mkIOLMER sev IOWrite msg Nothing () (MonadIO.File.chmod perms fn)
 
 -- that's all, folks! ----------------------------------------------------------
