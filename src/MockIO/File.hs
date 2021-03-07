@@ -5,7 +5,8 @@
 {-# LANGUAGE ViewPatterns      #-}
 
 module MockIO.File
-  ( access, chmod, lstat, stat, writable
+  ( access, chmod, fileWritable, isWritableDir, isWritableFile, lstat, stat
+  , unlink, writable
 
   , openFile, openFileBinary, openFileUTF8
   , openFileReadBinary, openFileReadWriteBinary, openFileReadWriteExBinary
@@ -41,14 +42,10 @@ module MockIO.File
   )
 where
 
-import Prelude ( div, rem )
-
 -- base --------------------------------
 
 import Control.Applicative     ( pure )
 import Control.Monad           ( forM_, join, return )
-import Data.Bits               ( (.&.) )
-import Data.Bool               ( otherwise )
 import Data.Either             ( Either( Left, Right ) )
 import Data.Function           ( ($), (&) )
 import Data.Maybe              ( Maybe( Just, Nothing ), fromMaybe, maybe )
@@ -79,16 +76,17 @@ import Data.Default  ( Default( def ) )
 
 -- data-textual ------------------------
 
-import Data.Textual  ( Printable )
-
--- exceptions --------------------------
-
-import Control.Monad.Catch ( MonadMask )
+import Data.Textual  ( Printable, toText )
 
 -- fpath -------------------------------
 
 import FPath.AsFilePath  ( AsFilePath )
 import FPath.File        ( File, FileAs( _File_ ) )
+import FPath.Dir         ( DirAs )
+
+-- fstat -------------------------------
+
+import FStat  ( FStat, mkfstat )
 
 -- lens --------------------------------
 
@@ -96,11 +94,11 @@ import Control.Lens.Review  ( review )
 
 -- log-plus ----------------------------
 
-import Log  ( CSOpt( NoCallStack ), Log, logIO, logToStderr )
+import Log  ( Log, logIO )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( LoggingT, MonadLog
+import Control.Monad.Log  ( MonadLog
                           , Severity( Informational, Notice ) )
 
 -- mockio ------------------------------
@@ -109,13 +107,13 @@ import MockIO  ( DoMock( DoMock, NoMock ) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, MockIOClass, doMock, mkIOL )
+import MockIO.Log      ( HasDoMock, doMock, mkIOL )
 import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ), ioClass )
 
 -- monadio-error -----------------------
 
 import MonadError           ( ѥ )
-import MonadError.IO.Error  ( AsIOError, IOError )
+import MonadError.IO.Error  ( AsIOError )
 
 -- monadio-plus ------------------------
 
@@ -129,7 +127,7 @@ import MonadIO.File  ( AccessMode( ACCESS_W )
 -- more-unicode ------------------------
 
 import Data.MoreUnicode.Bool     ( 𝔹 )
-import Data.MoreUnicode.Functor  ( (⩺) )
+import Data.MoreUnicode.Functor  ( (⊳⊳), (⩺) )
 import Data.MoreUnicode.Lens     ( (⊢) )
 import Data.MoreUnicode.Maybe    ( 𝕄 )
 import Data.MoreUnicode.Text     ( 𝕋 )
@@ -142,13 +140,9 @@ import Control.Monad.Except  ( ExceptT, MonadError, throwError )
 
 import qualified  Data.Text.IO  as  TextIO
 
-import Data.Text                 ( pack )
+import Data.Text                 ( lines, pack )
 import Data.Text.Encoding        ( decodeUtf8With )
 import Data.Text.Encoding.Error  ( lenientDecode )
-
--- time --------------------------------
-
-import Data.Time.Clock.POSIX  ( posixSecondsToUTCTime )
 
 -- tfmt --------------------------------
 
@@ -157,17 +151,29 @@ import Text.Fmt  ( fmt, fmtT )
 -- unix --------------------------------
 
 import System.Posix.IO     ( OpenFileFlags )
-import System.Posix.Files  ( FileStatus
-                           , accessTimeHiRes, modificationTimeHiRes
-                           , statusChangeTimeHiRes
-                           , deviceID, fileGroup, fileID, fileMode, fileOwner
-                           , fileSize, isBlockDevice, isCharacterDevice
-                           , isDirectory, isNamedPipe, isRegularFile, isSocket
-                           , isSymbolicLink, linkCount
-                           , specialDeviceID
-                           )
+import System.Posix.Files  ( FileStatus )
 
 --------------------------------------------------------------------------------
+
+{- | Log a mockable IO Action, including its result (if provided a suitable
+     formatter), and any exception it throws. -}
+mkIOLMER ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+            Default ω, HasIOClass ω, HasDoMock ω) ⇒
+            Severity → IOClass → 𝕋 → 𝕄 (α → [𝕋]) → α
+         → ExceptT ε IO α → DoMock → μ α
+mkIOLMER sev ioclass msg valmsg mock_value io mck = do
+  let stg  = def & ioClass ⊢ ioclass & doMock ⊢ mck
+  result ← mkIOL sev ioclass msg (Right mock_value) (ѥ io) mck
+  case result of
+    Left  e → do logIO sev stg (pp mck $ [fmtT|%t FAILED: %T|] msg e)
+                 throwError e
+    Right r → do case valmsg of
+                   Nothing → return ()
+                   Just v  → forM_ (v r) $ \ t →
+                     logIO sev stg (pp mck $ [fmtT|%t: %t|] msg t)
+                 return r
+
+----------------------------------------
 
 doFile ∷ (MonadIO μ, MonadLog (Log ω) μ, Printable ε, MonadError ε μ,
           Default ω, HasIOClass ω, HasDoMock ω, FileAs γ) ⇒
@@ -652,50 +658,20 @@ access sev amode mock_value fn = do
 
 ----------------------------------------
 
-{- | Rough 'n' ready stat output.  Feel free to improve this as time allows,
-     it's just a textual representation, nothing should be parsing it. -}
-pstat ∷ FileStatus → [𝕋]
-pstat s =
-  let dev = specialDeviceID s
-   in [ [fmt|Size %d\t%t|]
-          (fileSize s) (dtype s)
-      , [fmt|Device %w\tInode: %d\tLinks: %d\t Device type: %d,%d|]
-          (deviceID s) (fileID s) (linkCount s) (dev `div` 256) (dev `rem` 256)
-      , [fmt|Access: %04o\tUid: %d\tGid: %d|]
-          (fileMode s .&. 0o7777) (fileOwner s) (fileGroup s)
-      , [fmt|Access: %Z|] (posixSecondsToUTCTime $ accessTimeHiRes s)
-      , [fmt|Modify: %Z|] (posixSecondsToUTCTime $ modificationTimeHiRes s)
-      , [fmt|Change: %Z|] (posixSecondsToUTCTime $ statusChangeTimeHiRes s)
-      ]
-
-dtype ∷ FileStatus → 𝕋
-dtype s | isBlockDevice     s = "block device"
-        | isCharacterDevice s = "character device"
-        | isDirectory       s = "directory"
-        | isNamedPipe       s = "named pipe"
-        | isRegularFile     s = "regular file"
-        | isSocket          s = "socket"
-        | isSymbolicLink    s = "symbolic link"
-        | otherwise           = "unknown"
-      
-logit ∷ (MonadIO μ, MonadMask μ) ⇒
-        ExceptT IOError (LoggingT (Log MockIOClass) μ) α → μ (Either IOError α)
-logit = logToStderr NoCallStack [] ∘ ѥ
-          
 _stat ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
          Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
         (ρ → ExceptT ε IO (𝕄 FileStatus))
-      → Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+      → Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
 _stat s sev mock_value fn mck =
   let msg  = [fmt|stat  %T|] fn
-      vmsg = Just $ maybe ["Nothing"] pstat
-   in mkIOLMER sev IORead msg vmsg mock_value (s fn) mck
+      vmsg = Just $ maybe ["Nothing"] (lines ∘ toText)
+   in mkIOLMER sev IORead msg vmsg mock_value (mkfstat ⊳⊳ s fn) mck
 
 --------------------
 
 stat ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
         Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
-       Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+       Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
 stat = _stat MonadIO.File.stat
  
 ----------
@@ -703,11 +679,13 @@ stat = _stat MonadIO.File.stat
 lstat ∷ (MonadIO μ,
          AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
          Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
-        Severity → 𝕄 FileStatus → ρ → DoMock → μ (𝕄 FileStatus)
+        Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
 lstat = _stat MonadIO.File.lstat 
 
 ----------------------------------------
 
+{- | Simple shortcut for file (or directory) is writable by this user; `Nothing`
+     is returned if file does not exist. -}
 writable ∷ (MonadIO μ,
             AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
             Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
@@ -716,25 +694,6 @@ writable sev = access sev ACCESS_W
 
 ----------------------------------------
 
-{- | Log a mockable IO Action, including its result (if provided a suitable
-     formatter), and any exception it throws. -}
-mkIOLMER ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
-            Default ω, HasIOClass ω, HasDoMock ω) ⇒
-            Severity → IOClass → 𝕋 → 𝕄 (α → [𝕋]) → α
-         → ExceptT ε IO α → DoMock → μ α
-mkIOLMER sev ioclass msg valmsg mock_value io mck = do
-  let stg  = def & ioClass ⊢ ioclass & doMock ⊢ mck
-  result ← mkIOL sev ioclass msg (Right mock_value) (ѥ io) mck
-  case result of
-    Left  e → do logIO sev stg (pp mck $ [fmtT|%t FAILED: %T|] msg e)
-                 throwError e
-    Right r → do case valmsg of
-                   Nothing → return ()
-                   Just v  → forM_ (v r) $ \ t →
-                     logIO sev stg (pp mck $ [fmtT|%t: %t|] msg t)
-                 return r
-
-
 chmod ∷ (MonadIO μ,
          AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
          Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
@@ -742,5 +701,55 @@ chmod ∷ (MonadIO μ,
 chmod sev perms fn =
   let msg = [fmt|chmod %T %04o|] fn perms
    in mkIOLMER sev IOWrite msg Nothing () (MonadIO.File.chmod perms fn)
+
+----------------------------------------
+
+unlink ∷ (MonadIO μ,
+          AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+          Default ω, HasIOClass ω, HasDoMock ω, FileAs γ, Printable γ) ⇒
+         Severity → γ → DoMock → μ ()
+unlink sev fn =
+  mkIOLMER sev IOWrite ([fmt|unlnk %T|] fn) Nothing () (MonadIO.File.unlink fn)
+
+----------------------------------------
+
+{- | Is `f` an extant writable file? -}
+isWritableFile ∷ (MonadIO μ,
+                  AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+                  Default ω, HasIOClass ω, HasDoMock ω, FileAs γ, Printable γ) ⇒
+                 Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
+
+isWritableFile sev mock_value fn =
+  let msg = [fmt|isWrF %T|] fn
+      vmsg = Just $ maybe ["file is writable"] pure
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.isWritableFile fn)
+
+----------------------------------------
+
+{- | Is `f` an extant writable directory? -}
+isWritableDir ∷ (MonadIO μ,
+                 AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+                 Default ω, HasIOClass ω, HasDoMock ω, DirAs γ, Printable γ) ⇒
+                Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
+
+isWritableDir sev mock_value fn =
+  let msg = [fmt|isWrD %T|] fn
+      vmsg = Just $ maybe ["file is writable"] pure
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.isWritableDir fn)
+
+----------------------------------------
+
+{- | Test that the given path is a writable (by this user) *file*, or does not
+     exist but is in a directory that is writable & executable by this user.
+     In case of not writable, some error text is returned to say why.
+ -}
+fileWritable ∷ (MonadIO μ,
+                AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+                Default ω, HasIOClass ω, HasDoMock ω, FileAs γ, Printable γ) ⇒
+               Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
+fileWritable sev mock_value fn =
+  let msg = [fmt|filWr %T|] fn
+      vmsg = Just $ maybe ["file is (potentially) writable"] pure
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fileWritable fn)
 
 -- that's all, folks! ----------------------------------------------------------
