@@ -1,3 +1,7 @@
+0.1.2.0 2021-03-08
+==================
+- add fexists, fexists'
+
 0.1.1.0 2021-03-07
 ==================
 - major expansion & rewrite, part 2

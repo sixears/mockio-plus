@@ -5,8 +5,9 @@
 {-# LANGUAGE ViewPatterns      #-}
 
 module MockIO.File
-  ( access, chmod, fileWritable, isWritableDir, isWritableFile, lstat, stat
-  , unlink, writable
+  ( AccessMode(..), FExists(..),
+    access, chmod, fexists, fexists', fileWritable, isWritableDir
+  , isWritableFile, lstat, stat, unlink, writable
 
   , openFile, openFileBinary, openFileUTF8
   , openFileReadBinary, openFileReadWriteBinary, openFileReadWriteExBinary
@@ -118,7 +119,7 @@ import MonadError.IO.Error  ( AsIOError )
 -- monadio-plus ------------------------
 
 import qualified  MonadIO.File
-import MonadIO.File  ( AccessMode( ACCESS_W )
+import MonadIO.File  ( AccessMode(..), FExists(..)
                      , appendFlags, fileFoldLinesH, readFlags
                      , readWriteFlags, readWriteExFlags, readWriteNoTruncFlags
                      , writeFlags, writeExFlags, writeNoTruncFlags
@@ -163,6 +164,9 @@ mkIOLMER ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
          → ExceptT ε IO α → DoMock → μ α
 mkIOLMER sev ioclass msg valmsg mock_value io mck = do
   let stg  = def & ioClass ⊢ ioclass & doMock ⊢ mck
+      pp ∷ DoMock → 𝕋 → 𝕋
+      pp NoMock t = t
+      pp DoMock t = "(" ⊕ t ⊕ ")"
   result ← mkIOL sev ioclass msg (Right mock_value) (ѥ io) mck
   case result of
     Left  e → do logIO sev stg (pp mck $ [fmtT|%t FAILED: %T|] msg e)
@@ -643,9 +647,27 @@ fileFoldLinesUTF8 a io w fn = withReadFileUTF8 w fn $ fileFoldLinesH a io
 
 ----------------------------------------
 
-pp ∷ DoMock → 𝕋 → 𝕋
-pp NoMock t = t
-pp DoMock t = "(" ⊕ t ⊕ ")"
+fexists ∷ (MonadIO μ,
+           AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+           Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+          Severity → FExists → ρ → DoMock → μ FExists
+fexists sev mock_value fn = do
+  let msg = [fmt|fxist %T|] fn
+      vmsg = Just $ (pure ∘ pack ∘ show)
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fexists fn)
+
+--------------------
+
+fexists' ∷ (MonadIO μ,
+            AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+            Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+           Severity → FExists → ρ → DoMock → μ FExists
+fexists' sev mock_value fn = do
+  let msg = [fmt|fxist %T|] fn
+      vmsg = Just $ (pure ∘ pack ∘ show)
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fexists' fn)
+
+----------------------------------------
 
 access ∷ (MonadIO μ,
           AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
