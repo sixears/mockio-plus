@@ -87,7 +87,7 @@ import FPath.Dir         ( DirAs )
 
 -- fstat -------------------------------
 
-import FStat  ( FStat, mkfstat )
+import FStat  ( FStat )
 
 -- lens --------------------------------
 
@@ -128,7 +128,7 @@ import MonadIO.File  ( AccessMode(..), FExists(..)
 -- more-unicode ------------------------
 
 import Data.MoreUnicode.Bool     ( 𝔹 )
-import Data.MoreUnicode.Functor  ( (⊳⊳), (⩺) )
+import Data.MoreUnicode.Functor  ( (⩺) )
 import Data.MoreUnicode.Lens     ( (⊢) )
 import Data.MoreUnicode.Maybe    ( 𝕄 )
 import Data.MoreUnicode.Text     ( 𝕋 )
@@ -152,7 +152,6 @@ import Text.Fmt  ( fmt, fmtT )
 -- unix --------------------------------
 
 import System.Posix.IO     ( OpenFileFlags )
-import System.Posix.Files  ( FileStatus )
 
 --------------------------------------------------------------------------------
 
@@ -682,12 +681,12 @@ access sev amode mock_value fn = do
 
 _stat ∷ (MonadIO μ, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
          Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
-        (ρ → ExceptT ε IO (𝕄 FileStatus))
+        (ρ → ExceptT ε IO (𝕄 FStat))
       → Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
 _stat s sev mock_value fn mck =
   let msg  = [fmt|stat  %T|] fn
       vmsg = Just $ maybe ["Nothing"] (lines ∘ toText)
-   in mkIOLMER sev IORead msg vmsg mock_value (mkfstat ⊳⊳ s fn) mck
+   in mkIOLMER sev IORead msg vmsg mock_value (s fn) mck
 
 --------------------
 
