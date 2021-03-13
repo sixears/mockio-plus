@@ -662,9 +662,31 @@ fexists' ∷ (MonadIO μ,
             Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
            Severity → FExists → ρ → DoMock → μ FExists
 fexists' sev mock_value fn = do
-  let msg = [fmt|fxist %T|] fn
+  let msg = [fmt|fxst' %T|] fn
       vmsg = Just $ (pure ∘ pack ∘ show)
    in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fexists' fn)
+
+--------------------
+
+lfexists ∷ (MonadIO μ,
+            AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+            Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+           Severity → FExists → ρ → DoMock → μ FExists
+lfexists sev mock_value fn = do
+  let msg = [fmt|lfxst %T|] fn
+      vmsg = Just $ (pure ∘ pack ∘ show)
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.lfexists fn)
+
+--------------------
+
+lfexists' ∷ (MonadIO μ,
+             AsIOError ε, Printable ε, MonadError ε μ, MonadLog (Log ω) μ,
+             Default ω, HasIOClass ω, HasDoMock ω, AsFilePath ρ, Printable ρ) ⇒
+            Severity → FExists → ρ → DoMock → μ FExists
+lfexists' sev mock_value fn = do
+  let msg = [fmt|lfxt' %T|] fn
+      vmsg = Just $ (pure ∘ pack ∘ show)
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.lfexists' fn)
 
 ----------------------------------------
 
