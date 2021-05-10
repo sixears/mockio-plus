@@ -1,3 +1,7 @@
+0.1.3.1 2021-05-10
+==================
+- add HasCallStack to all functions with MonadError in the type
+
 0.1.3.0 2021-03-13
 ==================
 -- add lfexists{,'}
