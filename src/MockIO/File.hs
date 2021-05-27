@@ -43,6 +43,9 @@ module MockIO.File
 
   , readFileUTF8Lenient
   , fileFoldLinesUTF8
+
+  , appendFlags, readFlags, readWriteFlags, readWriteExFlags
+  , readWriteNoTruncFlags, writeFlags, writeExFlags, writeNoTruncFlags
   )
 where
 

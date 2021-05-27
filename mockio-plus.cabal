@@ -3,7 +3,7 @@ name:                mockio-plus
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.1.3.1
+version:             0.1.4.0
 synopsis:            MonadIO, Mocked, Logged, with Text.
 description:         MonadIO, Mocked, Logged, with Text.
 cabal-version:       >= 1.10
@@ -14,22 +14,22 @@ maintainer:          haskell@sixears.com
 build-type:          Simple
 library
   ghc-options:        -O2 -W -Wall -fhelpful-errors
-  exposed-modules:    MockIO.File
+  exposed-modules:    MockIO.Directory, MockIO.File
 
   other-modules:
   default-extensions: NoImplicitPrelude
   build-depends:      base, base-unicode-symbols, bytestring, data-default
-                    , data-textual, lens, logging-effect, mtl, text
-                    , text-printer, time, unix
+                    , data-textual, exceptions, lens, logging-effect, mtl, text
+                    , unix
 
-                    , fpath          >= 1.1.3.0
+                    , fpath          >= 1.1.4.1
                     , fstat          >= 1.0.1.0
                     , log-plus       >= 0.0.2.2
                     , mockio         >= 0.0.3.0
-                    , mockio-log     >= 0.0.3.0
+                    , mockio-log     >= 0.0.3.1
                     , monaderror-io  >= 1.1.0.1
-                    , monadio-plus   >= 1.4.2.1
-                    , more-unicode   >= 0.0.13.0
+                    , monadio-plus   >= 1.4.5.0
+                    , more-unicode   >= 0.0.14.0
                     , tfmt           >= 0.2.4.0
 
   hs-source-dirs:      src

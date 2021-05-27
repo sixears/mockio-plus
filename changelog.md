@@ -1,3 +1,7 @@
+0.1.4.0 2021-05-26
+==================
+- add MockIO.Directory
+
 0.1.3.1 2021-05-10
 ==================
 - add HasCallStack to all functions with MonadError in the type
