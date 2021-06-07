@@ -169,6 +169,7 @@ appendFile sev msgf perms fn t =
   let write h = lift $ hWriteContents h t
    in withFile sev msgf (impliedEncoding t) (FileA perms) (return ()) fn write
 
+-- λ> logit' $ appendFile @IOError @Text @_ @MockIOClass Notice Nothing Nothing [absfile|/tmp/bob|] ("bobob") NoMock
 
 ----------------------------------------
 

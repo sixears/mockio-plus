@@ -14,7 +14,11 @@ maintainer:          haskell@sixears.com
 build-type:          Simple
 library
   ghc-options:        -O2 -W -Wall -fhelpful-errors
-  exposed-modules:    MockIO.Directory, MockIO.File, MockIO.OpenFile
+  exposed-modules:    MockIO.Directory
+                    , MockIO.File
+                    , MockIO.OpenFile
+                    , MockIO.Process
+                    , MockIO.Process.MLMakeIStream
 
   other-modules:
   default-extensions: FlexibleContexts
@@ -23,11 +27,13 @@ library
                     , PatternSynonyms
                     , QuasiQuotes
                     , RankNTypes
+                    , ScopedTypeVariables
                     , UnicodeSyntax
                     , ViewPatterns
 
   build-depends:      base, base-unicode-symbols, bytestring, data-default
-                    , data-textual, exceptions, lens, logging-effect, mtl, text
+                    , data-textual, exceptions, lens, logging-effect, mtl
+                    , process, text
 
                     , fpath          >= 1.1.4.1
                     , fstat          >= 1.0.1.0
@@ -35,7 +41,7 @@ library
                     , mockio         >= 0.0.3.0
                     , mockio-log     >= 0.0.4.0
                     , monaderror-io  >= 1.1.0.1
-                    , monadio-plus   >= 1.4.7.0
+                    , monadio-plus   >= 1.4.9.0
                     , more-unicode   >= 0.0.15.0
                     , tfmt           >= 0.2.4.0
 
