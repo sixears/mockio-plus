@@ -1,3 +1,7 @@
+0.3.0.0 2021-07-24
+==================
+- Add MockIO.Process
+
 0.2.0.0 2021-06-03
 ==================
 - Massive cleanup of openfile functions based on similar in MonadIO
