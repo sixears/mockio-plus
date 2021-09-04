@@ -4,7 +4,6 @@ where
 
 -- base --------------------------------
 
-import Data.Either    ( Either )
 import Data.Eq        ( Eq )
 import Data.Foldable  ( any )
 import Data.Function  ( ($), (&) )
@@ -162,7 +161,7 @@ grepaf pat fn = runPureLoggingT $ devnull ≫ grep_ [pat, toText fn]
 {- | grep a pattern from some `Text`; capture the logs -}
 _grep_ ∷ (MonadIO μ, MLMakeIStream σ) ⇒
         𝕋 → σ → μ (𝔼 ProcError ((ExitStatus, (𝕋,𝕋)), Log MockIOClass))
-_grep_ pat input = ѥ @_ @(Either _) $ grep pat input
+_grep_ pat input = ѥ $ grep pat input
 
 {- | grep a pattern from some `Text`; write the logs to stderr -}
 

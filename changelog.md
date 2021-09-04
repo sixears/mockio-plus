@@ -1,3 +1,7 @@
+0.3.0.1 2021-08-04
+==================
+- Fix up type ordering in T.Process for monaderror upgrade
+
 0.3.0.0 2021-07-24
 ==================
 - Add MockIO.Process
