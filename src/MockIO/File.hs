@@ -43,6 +43,10 @@ import FPath.Dir         ( DirAs )
 
 import FStat  ( FStat )
 
+-- lens --------------------------------
+
+import Control.Lens  ( view )
+
 -- log-plus ----------------------------
 
 import Log  ( Log )
@@ -67,7 +71,8 @@ import MonadError.IO.Error  ( AsIOError )
 -- monadio-plus ------------------------
 
 import qualified  MonadIO.File
-import MonadIO.File  ( AccessMode(..), FExists(..), fileFoldLinesH )
+import MonadIO.File         ( AccessMode(..), FExists(..), fileFoldLinesH )
+import MonadIO.NamedHandle  ( handle )
 
 -- more-unicode ------------------------
 
@@ -105,7 +110,8 @@ fileFoldLinesUTF8 ∷ (MonadIO μ, FileAs γ,
                      Severity → 𝕄 (File → 𝕋) → α → (α → 𝕋 → IO α) → μ α → γ → DoMock → μ α
 fileFoldLinesUTF8 sev msgf a io w fn mck =
 --   withReadFileUTF8 w fn $ fileFoldLinesH a io
-  withFile sev msgf UTF8 FileR w fn (lift ∘ fileFoldLinesH a io) mck
+  withFile sev msgf UTF8 FileR w fn
+           (lift ∘ fileFoldLinesH a io ∘ view handle) mck
 
 ----------------------------------------
 

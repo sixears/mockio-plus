@@ -1,3 +1,7 @@
+0.3.0.2 2021-10-13
+==================
+- upgrade dependencies, including monadio-plus 2.0.0.0
+
 0.3.0.1 2021-08-04
 ==================
 - Fix up type ordering in T.Process for monaderror upgrade

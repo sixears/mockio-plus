@@ -15,7 +15,7 @@ import Control.Monad.IO.Class  ( MonadIO )
 import GHC.Stack               ( HasCallStack )
 import Data.Function           ( ($) )
 import Data.Maybe              ( fromMaybe )
-import System.IO               ( Handle, IO
+import System.IO               ( IO
                                , IOMode( AppendMode, ReadMode, ReadWriteMode
                                        , WriteMode )
                                )
@@ -69,16 +69,16 @@ import MonadError.IO.Error  ( AsIOError )
 
 import qualified MonadIO.File
 
-import MonadIO.Handle    ( HWriteContents( hWriteContents )
-                         , HGetContents( hGetContents )
-                         , impliedEncoding, impliedEncodingM  )
-import MonadIO.OpenFile  ( FileOpenMode(..)
-                         , HEncoding( Binary, NoEncoding, UTF8 )
-                         , appendFlags, fileOpenMode
-                         , readFlags, readWriteExFlags, readWriteNoTruncFlags
-                         , readWriteFlags, writeExFlags, writeFlags
-                         , writeNoTruncFlags
-                         )
+import MonadIO.NamedHandle  ( ℍ, HWriteContents( hWriteContents )
+                            , HGetContents( hGetContents )
+                            , impliedEncoding, impliedEncodingM  )
+import MonadIO.OpenFile     ( FileOpenMode(..)
+                            , HEncoding( Binary, NoEncoding, UTF8 )
+                            , appendFlags, fileOpenMode
+                            , readFlags, readWriteExFlags, readWriteNoTruncFlags
+                            , readWriteFlags, writeExFlags, writeFlags
+                            , writeNoTruncFlags
+                            )
 
 -- more-unicode ------------------------
 
@@ -128,7 +128,7 @@ openFile ∷ ∀ ε γ ω μ .
             AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
             MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω)⇒
            Severity → 𝕄 (File → 𝕋)
-         → HEncoding → FileOpenMode → μ Handle → γ → DoMock → μ Handle
+         → HEncoding → FileOpenMode → μ ℍ → γ → DoMock → μ ℍ
 openFile sev msgf enc fomode a (review _File_ → fn) mck =
   let go = MonadIO.File.openFile enc fomode fn
    in join $ doFile sev msgf (ѥ go) fomode a fn mck
@@ -139,7 +139,7 @@ withFile ∷ ∀ ε α γ ω μ .
            (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
             MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω, FileAs γ)⇒
            Severity → 𝕄 (File → 𝕋) → HEncoding → FileOpenMode → μ α → γ
-         → (Handle → ExceptT ε IO α) → DoMock → μ α
+         → (ℍ → ExceptT ε IO α) → DoMock → μ α
 withFile sev msgf enc fomode a fn io mck =
   let go = MonadIO.File.withFile enc fomode fn io
    in join $ doFile sev msgf (ѥ go) fomode a fn mck

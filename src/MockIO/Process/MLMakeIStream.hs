@@ -11,7 +11,6 @@ import Prelude  ( (-) )
 
 import Control.Monad.IO.Class  ( MonadIO )
 import GHC.Stack               ( HasCallStack )
-import System.IO               ( Handle )
 import Text.Show               ( show )
 
 -- base-unicode-symbols ----------------
@@ -66,6 +65,7 @@ import MonadError.IO.Error  ( AsIOError )
 -- monadio-plus ------------------------
 
 import MonadIO.File                   ( devnull )
+import MonadIO.NamedHandle            ( ℍ )
 import MonadIO.Process.MkInputStream  ( mkIStream )
 
 -- more-unicode ------------------------
@@ -104,7 +104,6 @@ import MockIO.OpenFile  ( FileOpenMode( FileR ), HEncoding( NoEncoding )
 --------------------------------------------------------------------------------
 
 type 𝔹𝕊 = ByteString
-type ℍ  = Handle
 
 ------------------------------------------------------------
 
