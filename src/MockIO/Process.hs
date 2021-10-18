@@ -269,9 +269,9 @@ doProc' ∷ ∀ ε ζ ξ σ ω μ .
           AsProcExitError ε, AsCreateProcError ε, AsFPathError ε,
           AsIOError ε, Printable ε, MonadError ε μ,
           HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
-         μ () → Severity → CmdRW → (ExitStatus, ξ) → σ → CmdSpec → DoMock
+         Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → CmdSpec → DoMock
        → μ (Word8, ξ)
-doProc' finally sev rw mck_val input cspec mck = do
+doProc' sev rw finally mck_val input cspec mck = do
   result ← ѥ $ systemx' sev rw mck_val input cspec mck
   finally
   throwSig' cspec result
@@ -283,7 +283,7 @@ doProc ∷ ∀ ε ζ ξ σ μ .
          ToMaybeTexts ξ, MakeProc ζ, OutputHandles ζ ξ,
          AsProcExitError ε, AsCreateProcError ε, AsFPathError ε, AsIOError ε,
          Printable ε, MonadError ε μ, MonadLog (Log MockIOClass) μ) ⇒
-        μ () → Severity → CmdRW → (ExitStatus, ξ) → σ → CmdSpec → DoMock
+        Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → CmdSpec → DoMock
       → μ (Word8, ξ)
 
 doProc = doProc'
