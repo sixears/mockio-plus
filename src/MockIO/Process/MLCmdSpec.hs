@@ -1,5 +1,6 @@
 module MockIO.Process.MLCmdSpec
   ( HasMLCmdSpec( cmdspec, cmdrw, mock, mock_value, severity ), MLCmdSpec
+  , ToCmdSpec( toCmdSpec )
   , mlMkCmd, mlMkCmd', mkMLCmd, mkMLCmd', mkMLCmdR, mkMLCmdR', mkMLCmdW
   , mkMLCmdW'
   )

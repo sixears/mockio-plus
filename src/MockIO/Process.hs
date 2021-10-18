@@ -53,7 +53,6 @@ import MonadIO.Error.ProcExitError    ( AsProcExitError )
 import MonadIO.File                   ( devnull )
 import MonadIO.NamedHandle            ( stdin )
 import MonadIO.Process                ( throwSig' )
-import MonadIO.Process.CmdSpec        ( CmdSpec )
 import MonadIO.Process.ExitStatus     ( ExitStatus )
 import MonadIO.Process.MakeProc       ( MakeProc )
 import MonadIO.Process.OutputHandles  ( OutputHandles )
@@ -81,7 +80,7 @@ import Text.Fmt  ( fmtT )
 import MockIO.Process.CmdRW          ( CmdRW( CmdR, CmdW ), ioc )
 import MockIO.Process.MLCmdSpec      ( HasMLCmdSpec( cmdspec, cmdrw, mock
                                                    , mock_value, severity )
-                                     , MLCmdSpec
+                                     , MLCmdSpec, ToCmdSpec( toCmdSpec )
                                      )
 import MockIO.Process.MLMakeIStream  ( MLMakeIStream( makeIStream ) )
 
@@ -89,8 +88,8 @@ import MockIO.Process.MLMakeIStream  ( MLMakeIStream( makeIStream ) )
 
 {- | Execute an external process, wait for termination, return exit status and
      whichever of stderr/stdout were implicitly requested by the return type. -}
-system' ∷ ∀ ε ζ ξ σ ω μ .
-          (MonadIO μ,
+system' ∷ ∀ ε ζ ξ σ ω χ μ .
+          (MonadIO μ, ToCmdSpec χ,
            AsIOError ε, AsFPathError ε, AsCreateProcError ε, AsProcExitError ε,
            Printable ε, MonadError ε μ, HasCallStack,
            ToMaybeTexts ξ, OutputHandles ζ ξ, MakeProc ζ, MLMakeIStream σ,
@@ -99,11 +98,11 @@ system' ∷ ∀ ε ζ ξ σ ω μ .
         → CmdRW           -- ^ Whether this is an 'active' or 'passive' command
         → (ExitStatus, ξ) -- ^ Dummy return values for when mocked
         → σ               -- ^ stdin specification
-        → CmdSpec         -- ^ cmd + args
+        → χ               -- ^ cmd + args
         → DoMock          -- ^ whether to mock this invocation
         → μ (ExitStatus, ξ)
 
-system' sev rw mck_val inh cspec mck = do
+system' sev rw mck_val inh (toCmdSpec → cspec) mck = do
   inh' ← makeIStream sev inh mck
   let msg          = [fmtT|<CMD> %T|] cspec
       msgR         ∷ (ExitStatus, ξ) → [𝕋]
@@ -114,8 +113,8 @@ system' sev rw mck_val inh cspec mck = do
 --------------------
 
 {- | `system'`, with `ω` specialized to `MockIOClass`. -}
-system ∷ ∀ ε ζ ξ σ μ .
-         (MonadIO μ,
+system ∷ ∀ ε ζ ξ σ χ μ .
+         (MonadIO μ, ToCmdSpec χ,
           AsIOError ε, AsFPathError ε, AsCreateProcError ε, AsProcExitError ε,
           Printable ε, MonadError ε μ, HasCallStack,
           ToMaybeTexts ξ, OutputHandles ζ ξ, MakeProc ζ, MLMakeIStream σ,
@@ -124,7 +123,7 @@ system ∷ ∀ ε ζ ξ σ μ .
        → CmdRW           -- ^ Whether this is an 'active' or 'passive' command
        → (ExitStatus, ξ) -- ^ Dummy return values for when mocked
        → σ               -- ^ stdin specification
-       → CmdSpec         -- ^ cmd + args
+       → χ               -- ^ cmd + args
        → DoMock          -- ^ whether to mock this invocation
        → μ (ExitStatus, ξ)
 system = system'
@@ -132,8 +131,8 @@ system = system'
 ----------------------------------------
 
 {- | Like `system`, but does not throw on any process exit/signal. -}
-systemx' ∷ ∀ ε ζ ξ σ ω μ .
-           (MonadIO μ,
+systemx' ∷ ∀ ε ζ ξ σ ω χ μ .
+           (MonadIO μ, ToCmdSpec χ,
             AsIOError ε, AsFPathError ε, AsCreateProcError ε, AsProcExitError ε,
             Printable ε, MonadError ε μ, HasCallStack,
             ToMaybeTexts ξ, OutputHandles ζ ξ, MakeProc ζ, MLMakeIStream σ,
@@ -142,23 +141,23 @@ systemx' ∷ ∀ ε ζ ξ σ ω μ .
          → CmdRW           -- ^ Whether this is an 'active' or 'passive' command
          → (ExitStatus, ξ) -- ^ Dummy return values for when mocked
          → σ               -- ^ stdin specification
-         → CmdSpec         -- ^ cmd + args
+         → χ               -- ^ cmd + args
          → DoMock          -- ^ whether to mock this invocation
          → μ (ExitStatus, ξ)
 
 systemx' sev rw mck_val inh cspec mck = do
   inh' ← makeIStream sev inh mck
-  let msg          = [fmtT|<CMD> %T|] cspec
+  let msg          = [fmtT|<CMD> %T|] (toCmdSpec cspec)
       msgR         ∷ (ExitStatus, ξ) → [𝕋]
       msgR (ex, _) = [[fmtT|exit: %T|] ex]
-      doSystem     = MonadIO.Process.systemx inh' cspec
+      doSystem     = MonadIO.Process.systemx inh' (toCmdSpec cspec)
   mkIOLMER sev (ioc rw) msg (𝕵 msgR) mck_val doSystem mck
 
 --------------------
 
 {- | `systemx`, with `ω` specialized to `MockIOClass`. -}
-systemx ∷ ∀ ε ζ ξ σ μ .
-           (MonadIO μ,
+systemx ∷ ∀ ε ζ ξ σ χ μ .
+           (MonadIO μ, ToCmdSpec χ,
             AsIOError ε, AsFPathError ε, AsCreateProcError ε, AsProcExitError ε,
             Printable ε, MonadError ε μ, HasCallStack,
             ToMaybeTexts ξ, OutputHandles ζ ξ, MakeProc ζ, MLMakeIStream σ,
@@ -167,7 +166,7 @@ systemx ∷ ∀ ε ζ ξ σ μ .
          → CmdRW           -- ^ Whether this is an 'active' or 'passive' command
          → (ExitStatus, ξ) -- ^ Dummy return values for when mocked
          → σ               -- ^ stdin specification
-         → CmdSpec         -- ^ cmd + args
+         → χ               -- ^ cmd + args
          → DoMock          -- ^ whether to mock this invocation
          → μ (ExitStatus, ξ)
 
@@ -263,27 +262,27 @@ sysS = sys stdin
 
 ----------------------------------------
 
-doProc' ∷ ∀ ε ζ ξ σ ω μ .
-         (MonadIO μ, MLMakeIStream σ,
+doProc' ∷ ∀ ε ζ ξ σ ω χ μ .
+         (MonadIO μ, MLMakeIStream σ, ToCmdSpec χ,
           ToMaybeTexts ξ, MakeProc ζ, OutputHandles ζ ξ,
           AsProcExitError ε, AsCreateProcError ε, AsFPathError ε,
           AsIOError ε, Printable ε, MonadError ε μ,
           HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
-         Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → CmdSpec → DoMock
+         Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → χ → DoMock
        → μ (Word8, ξ)
 doProc' sev rw finally mck_val input cspec mck = do
   result ← ѥ $ systemx' sev rw mck_val input cspec mck
   finally
-  throwSig' cspec result
+  throwSig' (toCmdSpec cspec) result
 
 ----------------------------------------
 
-doProc ∷ ∀ ε ζ ξ σ μ .
-        (MonadIO μ, MLMakeIStream σ,
+doProc ∷ ∀ ε ζ ξ σ χ μ .
+        (MonadIO μ, MLMakeIStream σ, ToCmdSpec χ,
          ToMaybeTexts ξ, MakeProc ζ, OutputHandles ζ ξ,
          AsProcExitError ε, AsCreateProcError ε, AsFPathError ε, AsIOError ε,
          Printable ε, MonadError ε μ, MonadLog (Log MockIOClass) μ) ⇒
-        Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → CmdSpec → DoMock
+        Severity → CmdRW → μ () → (ExitStatus, ξ) → σ → χ → DoMock
       → μ (Word8, ξ)
 
 doProc = doProc'

@@ -1,4 +1,8 @@
-0.3.2.0 2021-10-08
+0.3.3.0 2021-10-18
+==================
+- use ToCmdSpec for systemx{,'}, doProc{,'}
+
+0.3.2.0 2021-10-18
 ==================
 - change order of arguments to doProc{,'}
 
