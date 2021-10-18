@@ -1,12 +1,15 @@
 module MockIO.Process.MLCmdSpec
   ( HasMLCmdSpec( cmdspec, cmdrw, mock, mock_value, severity ), MLCmdSpec
-  , mkMLCmd, mkMLCmd', mkMLCmdR, mkMLCmdR', mkMLCmdW, mkMLCmdW' )
+  , mlMkCmd, mlMkCmd', mkMLCmd, mkMLCmd', mkMLCmdR, mkMLCmdR', mkMLCmdW
+  , mkMLCmdW'
+  )
 where
 
 
 -- base --------------------------------
 
 import Data.Function  ( id )
+import Data.Tuple     ( uncurry )
 
 -- base-unicode-symbols ----------------
 
@@ -95,8 +98,30 @@ instance HasExpExitVal (MLCmdSpec ξ) where
 instance HasExpExitSig (MLCmdSpec ξ) where
   expExitSig = cmdspec ∘ expExitSig
 
-{- | Create an `MLCmdSpec` using `OutputDefault` for mock values.  Expected exit
-     code is 0 and no signals are expected. -}
+class ToCmdSpec α where
+  toCmdSpec ∷ α → CmdSpec
+
+instance ToCmdSpec CmdSpec where
+  toCmdSpec = id
+
+instance ToCmdSpec (AbsFile, [𝕋]) where
+  toCmdSpec = uncurry mkCmd'
+
+{- | Create an `MLCmdSpec` using something that can be converted to a `CmdSpec`.
+     Exit code is 0 and no signals are expected. -}
+mlMkCmd ∷ (ToCmdSpec χ) ⇒ Severity → CmdRW → χ → ξ → DoMock → MLCmdSpec ξ
+mlMkCmd sev rw cspec x mck =
+   MLCmdSpec sev rw mck (toCmdSpec cspec) (ExitVal 0, x)
+
+{- | Create an `MLCmdSpec` using something that can be converted to a `CmdSpec`,
+     and using `OutputDefault` for mock values. -}
+mlMkCmd' ∷ (ToCmdSpec χ, OutputDefault ξ) ⇒
+           Severity → CmdRW → χ → DoMock → MLCmdSpec ξ
+mlMkCmd' sev rw cspec mck =
+   MLCmdSpec sev rw mck (toCmdSpec cspec) (ExitVal 0, outDef)
+
+{- | Create an `MLCmdSpec` using `OutputDefault` for mock values.  Exit code is
+     0 and no signals are expected. -}
 mkMLCmd ∷ OutputDefault ξ ⇒
           Severity → CmdRW → AbsFile → [𝕋] → DoMock → MLCmdSpec ξ
 mkMLCmd sev rw exe args mck =

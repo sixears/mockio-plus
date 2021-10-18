@@ -1,3 +1,10 @@
+0.3.1.0 2021-10-18
+==================
+
+- add readFileY, flock, flockNB, unflock, systemx, systemx', doProc, doProc',
+  mlMkCmd, mlMkCmd'
+- export system'
+
 0.3.0.2 2021-10-13
 ==================
 - upgrade dependencies, including monadio-plus 2.0.0.0

@@ -1,6 +1,6 @@
 module MockIO.OpenFile
   ( FileOpenMode(..), HEncoding( Binary, NoEncoding, UTF8 )
-  , appendFile, openFile, readFile, readFileUTF8Lenient, withFile
+  , appendFile, openFile, readFile, readFileY, readFileUTF8Lenient, withFile
   , writeFile, writeNoTruncFile, writeExFile
 
   , appendFlags, readFlags, readWriteExFlags, readWriteFlags
@@ -63,7 +63,7 @@ import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ) )
 -- monaderror-io -----------------------
 
 import MonadError           ( ѥ )
-import MonadError.IO.Error  ( AsIOError )
+import MonadError.IO.Error  ( AsIOError, squashNoSuchThingT )
 
 -- monadio-plus ------------------------
 
@@ -156,6 +156,17 @@ readFile sev msgf a fn mck =
   let result = withFile sev msgf enc FileR a fn hGetContents mck
       enc    = impliedEncodingM result
    in result
+
+--------------------
+
+readFileY ∷ forall ε τ γ ω μ .
+           (MonadIO μ, HGetContents τ, FileAs γ,
+            AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+            MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω) ⇒
+           Severity → 𝕄 (File → 𝕋) → τ → γ → DoMock → μ (𝕄 τ)
+
+readFileY sev msgf a fn mck =
+  squashNoSuchThingT $ readFile sev msgf (return a) fn mck
 
 ----------------------------------------
 
