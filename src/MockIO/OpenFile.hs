@@ -106,6 +106,11 @@ type 𝔹𝕊 = ByteString
 
 ------------------------------------------------------------
 
+{- | If `msgf` is `Just f`, then the filename is given to `f` and the resultant
+     message is logged.  If `msgf` is `Nothing`, then some standard message
+     relevant to the open mode - e.g., `write ` or `appnd ` is prefixed to the
+     filename and that is logged.
+ -}
 doFile ∷ ∀ ε α γ ω μ .
          (MonadIO μ, FileAs γ,
           Printable ε, MonadError ε μ, HasCallStack,

@@ -1,3 +1,7 @@
+0.3.4.0 2021-12-28
+==================
+- add MockIO.File.rename
+
 0.3.3.0 2021-10-18
 ==================
 - use ToCmdSpec for systemx{,'}, doProc{,'}

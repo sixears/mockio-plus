@@ -3,6 +3,7 @@ module MockIO.File
     access, chmod, fexists, fexists', lfexists, lfexists'
   , fileWritable, isWritableDir, isWritableFile
   , lstat, stat
+  , rename
   , unlink
   , writable
 
@@ -107,7 +108,8 @@ import MockIO.OpenFile  ( HEncoding( UTF8 ), FileOpenMode( FileR ), withFile )
 fileFoldLinesUTF8 ∷ (MonadIO μ, FileAs γ,
                      AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
                      MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
-                     Severity → 𝕄 (File → 𝕋) → α → (α → 𝕋 → IO α) → μ α → γ → DoMock → μ α
+                    Severity → 𝕄 (File → 𝕋) → α → (α → 𝕋 → IO α) → μ α → γ
+                  → DoMock → μ α
 fileFoldLinesUTF8 sev msgf a io w fn mck =
 --   withReadFileUTF8 w fn $ fileFoldLinesH a io
   withFile sev msgf UTF8 FileR w fn
@@ -169,7 +171,7 @@ access ∷ (MonadIO μ,
           AsFilePath ρ, Printable ρ) ⇒
          Severity → AccessMode → 𝕄 𝔹 → ρ → DoMock → μ (𝕄 𝔹)
 access sev amode mock_value fn = do
-  let msg = [fmt|access %T %w|] fn amode
+  let msg = [fmt|accss %T %w|] fn amode
       vmsg = 𝕵 $ maybe ["Nothing"] (pure ∘ pack ∘ show)
    in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.access amode fn)
 
@@ -277,5 +279,16 @@ fileWritable sev mock_value fn =
   let msg = [fmt|filWr %T|] fn
       vmsg = 𝕵 $ maybe ["file is (potentially) writable"] pure
    in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fileWritable fn)
+
+
+{- | See `MonadIO.File.rename` -}
+rename ∷ ∀ ε γ δ ω μ .
+         (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω, FileAs γ,
+          FileAs δ, Printable γ, Printable δ) ⇒
+         Severity → γ → δ → DoMock → μ ()
+rename sev from to =
+  let msg = [fmt|renam '%T' → '%T'|] from to
+   in mkIOLMER sev IOWrite msg 𝕹 () (MonadIO.File.rename from to)
 
 -- that's all, folks! ----------------------------------------------------------
