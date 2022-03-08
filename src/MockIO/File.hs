@@ -102,10 +102,9 @@ import MockIO.OpenFile  ( HEncoding( UTF8 ), FileOpenMode( FileR ), withFile )
 
 --------------------------------------------------------------------------------
 
-----------------------------------------
-
 {- | Work over a file, accumulating results, line-by-line. -}
-fileFoldLinesUTF8 ∷ (MonadIO μ, FileAs γ,
+fileFoldLinesUTF8 ∷ ∀ ε α γ ω μ .
+                    (MonadIO μ, FileAs γ,
                      AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
                      MonadLog (Log ω) μ, Default ω, HasDoMock ω, HasIOClass ω) ⇒
                     Severity → 𝕄 (File → 𝕋) → α → (α → 𝕋 → IO α) → μ α → γ
@@ -117,7 +116,8 @@ fileFoldLinesUTF8 sev msgf a io w fn mck =
 
 ----------------------------------------
 
-fexists ∷ (MonadIO μ,
+fexists ∷ ∀ ε ρ ω μ .
+          (MonadIO μ,
            AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
            MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
            AsFilePath ρ, Printable ρ) ⇒
@@ -129,7 +129,8 @@ fexists sev mock_value fn = do
 
 --------------------
 
-fexists' ∷ (MonadIO μ,
+fexists' ∷ ∀ ε ρ ω μ .
+           (MonadIO μ,
             AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
             MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
             AsFilePath ρ, Printable ρ) ⇒
@@ -141,7 +142,8 @@ fexists' sev mock_value fn = do
 
 --------------------
 
-lfexists ∷ (MonadIO μ,
+lfexists ∷ ∀ ε ρ ω μ .
+           (MonadIO μ,
             AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
             MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
             AsFilePath ρ, Printable ρ) ⇒
@@ -153,7 +155,8 @@ lfexists sev mock_value fn = do
 
 --------------------
 
-lfexists' ∷ (MonadIO μ,
+lfexists' ∷ ∀ ε ρ ω μ .
+            (MonadIO μ,
              AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
              MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
              AsFilePath ρ, Printable ρ) ⇒
@@ -165,7 +168,8 @@ lfexists' sev mock_value fn = do
 
 ----------------------------------------
 
-access ∷ (MonadIO μ,
+access ∷ ∀ ε ρ ω μ .
+         (MonadIO μ,
           AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
           MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
           AsFilePath ρ, Printable ρ) ⇒
@@ -177,7 +181,8 @@ access sev amode mock_value fn = do
 
 ----------------------------------------
 
-_stat ∷ (MonadIO μ, Printable ε, MonadError ε μ, HasCallStack,
+_stat ∷ ∀ ε ρ ω μ .
+        (MonadIO μ, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          AsFilePath ρ, Printable ρ) ⇒
         (ρ → ExceptT ε IO (𝕄 FStat))
@@ -189,7 +194,8 @@ _stat s sev mock_value fn mck =
 
 --------------------
 
-stat ∷ (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+stat ∷ ∀ ε ρ ω μ .
+       (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
         MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
         AsFilePath ρ, Printable ρ) ⇒
        Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
@@ -197,7 +203,8 @@ stat = _stat MonadIO.File.stat
 
 ----------
 
-lstat ∷ (MonadIO μ,
+lstat ∷ ∀ ε ρ ω μ .
+        (MonadIO μ,
          AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          AsFilePath ρ, Printable ρ) ⇒
@@ -208,7 +215,8 @@ lstat = _stat MonadIO.File.lstat
 
 {- | Simple shortcut for file (or directory) is writable by this user; `Nothing`
      is returned if file does not exist. -}
-writable ∷ (MonadIO μ,
+writable ∷ ∀ ε ρ ω μ .
+           (MonadIO μ,
             AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
             MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
             AsFilePath ρ, Printable ρ) ⇒
@@ -217,7 +225,8 @@ writable sev = access sev ACCESS_W
 
 ----------------------------------------
 
-chmod ∷ (MonadIO μ,
+chmod ∷ ∀ ε ρ ω μ .
+        (MonadIO μ,
          AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          AsFilePath ρ, Printable ρ) ⇒
@@ -228,7 +237,8 @@ chmod sev perms fn =
 
 ----------------------------------------
 
-unlink ∷ (MonadIO μ,
+unlink ∷ ∀ ε γ ω μ .
+         (MonadIO μ,
           AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
           MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
           FileAs γ, Printable γ) ⇒
@@ -239,7 +249,8 @@ unlink sev fn =
 ----------------------------------------
 
 {- | Is `f` an extant writable file? -}
-isWritableFile ∷ (MonadIO μ,
+isWritableFile ∷ ∀ ε γ ω μ .
+                 (MonadIO μ,
                   AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
                   MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
                   FileAs γ, Printable γ) ⇒
@@ -253,7 +264,8 @@ isWritableFile sev mock_value fn =
 ----------------------------------------
 
 {- | Is `f` an extant writable directory? -}
-isWritableDir ∷ (MonadIO μ,
+isWritableDir ∷ ∀ ε γ ω μ .
+                (MonadIO μ,
                  AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
                  MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
                  DirAs γ, Printable γ) ⇒
@@ -270,7 +282,8 @@ isWritableDir sev mock_value fn =
      exist but is in a directory that is writable & executable by this user.
      In case of not writable, some error text is returned to say why.
  -}
-fileWritable ∷ (MonadIO μ,
+fileWritable ∷ ∀ ε γ ω μ .
+               (MonadIO μ,
                 AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
                 MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
                 FileAs γ, Printable γ) ⇒

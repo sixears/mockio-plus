@@ -1,3 +1,7 @@
+0.3.5.0 2022-03-07
+==================
+- add ordered type variables to MonadIO.File.*
+
 0.3.4.0 2021-12-28
 ==================
 - add MockIO.File.rename
