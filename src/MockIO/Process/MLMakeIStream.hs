@@ -5,42 +5,17 @@ module MockIO.Process.MLMakeIStream
   ( MLMakeIStream( makeIStream ) )
 where
 
-import Prelude  ( (-) )
-
--- base --------------------------------
-
-import Control.Monad.IO.Class  ( MonadIO )
-import GHC.Stack               ( HasCallStack )
-import Text.Show               ( show )
-
--- base-unicode-symbols ----------------
-
-import Data.Eq.Unicode        ( (≡) )
-import Data.Function.Unicode  ( (∘) )
-import Data.Ord.Unicode       ( (≤) )
-import Data.Monoid.Unicode    ( (⊕) )
+import Base1T  hiding  ( init, tail )
 
 -- bytestring --------------------------
 
 import Data.ByteString  ( ByteString )
-
--- data-default ------------------------
-
-import Data.Default  ( Default( def ) )
-
--- data-textual ------------------------
-
-import Data.Textual  ( Printable )
 
 -- fpath -------------------------------
 
 import FPath.AbsFile           ( absfile )
 import FPath.Error.FPathError  ( AsFPathError )
 import FPath.File              ( File( FileA ), FileAs( _File_ ) )
-
--- lens --------------------------------
-
-import Control.Lens.Review  ( review )
 
 -- log-plus ----------------------------
 
@@ -58,25 +33,11 @@ import MockIO.DoMock  ( DoMock( DoMock, NoMock ), HasDoMock )
 
 import MockIO.IOClass  ( HasIOClass )
 
--- monaderror-io -----------------------
-
-import MonadError.IO.Error  ( AsIOError )
-
 -- monadio-plus ------------------------
 
 import MonadIO.File                   ( devnull )
 import MonadIO.NamedHandle            ( ℍ )
 import MonadIO.Process.MkInputStream  ( mkIStream )
-
--- more-unicode ------------------------
-
-import Data.MoreUnicode.Maybe  ( pattern 𝕹 )
-import Data.MoreUnicode.Monad  ( (≫) )
-import Data.MoreUnicode.Text   ( 𝕋 )
-
--- mtl ---------------------------------
-
-import Control.Monad.Except  ( MonadError )
 
 -- process -----------------------------
 
@@ -88,11 +49,7 @@ import Safe  ( succDef )
 
 -- text --------------------------------
 
-import Data.Text  ( init, length, pack, tail, take )
-
--- text-fmt ----------------------------
-
-import Text.Fmt  ( fmtT )
+import Data.Text  ( init, length, pack, tail, take, unlines )
 
 ------------------------------------------------------------
 --                     local imports                      --
@@ -134,6 +91,9 @@ instance MLMakeIStream 𝕋 where
         msg = [fmtT|using provided Text «%t» as input stream|] (trim 40 t)
     logIO sev def (plog msg mck)
     mkIStream t
+
+instance MLMakeIStream [𝕋] where
+  makeIStream sev ts mck = makeIStream sev (unlines ts) mck
 
 instance MLMakeIStream 𝔹𝕊 where
   makeIStream sev b mck = do

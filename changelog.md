@@ -1,3 +1,8 @@
+0.3.6.0 2022-04-10
+==================
+- add support for env modifications in system{,x}{,'} via ToCmdSpec
+  (AbsFile,[Text],[EnvModFrag])
+
 0.3.5.0 2022-03-07
 ==================
 - add ordered type variables to MonadIO.File.*

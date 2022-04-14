@@ -1,28 +1,25 @@
 module MockIO.Process.MLCmdSpec
-  ( HasMLCmdSpec( cmdspec, cmdrw, mock, mock_value, severity ), MLCmdSpec
-  , ToCmdSpec( toCmdSpec )
+  ( HasMLCmdSpec( cmdspec, cmdrw, mlCmdSpec, mock, mock_value, severity )
+  , MLCmdSpec, ToCmdSpec( toCmdSpec ), ToMLCmdSpec( toMLCmdSpec )
   , mlMkCmd, mlMkCmd', mkMLCmd, mkMLCmd', mkMLCmdR, mkMLCmdR', mkMLCmdW
   , mkMLCmdW'
   )
 where
 
+import Base1T
 
 -- base --------------------------------
 
-import Data.Function  ( id )
-import Data.Tuple     ( uncurry )
+import Data.Tuple  ( uncurry )
 
--- base-unicode-symbols ----------------
+-- env-plus ----------------------------
 
-import Data.Function.Unicode  ( (∘) )
+import Env        ( getEnvironment )
+import Env.Types  ( EnvModFrag, runEnvMod', ҙ )
 
 -- fpath -------------------------------
 
 import FPath.AbsFile  ( AbsFile )
-
--- lens --------------------------------
-
-import Control.Lens.Lens  ( Lens', lens )
 
 -- logging-effect ----------------------
 
@@ -30,7 +27,7 @@ import Control.Monad.Log  ( Severity( Informational, Notice ) )
 
 -- mockio ------------------------------
 
-import MockIO.DoMock  ( DoMock )
+import MockIO.DoMock  ( DoMock( NoMock ) )
 
 -- monadio-plus ------------------------
 
@@ -38,14 +35,10 @@ import MonadIO.Process.CmdSpec        ( CmdSpec, HasCmdArgs( cmdArgs )
                                       , HasExpExitSig( expExitSig )
                                       , HasExpExitVal( expExitVal )
                                       , HasCmdExe( cmdExe )
-                                      , HasCmdSpec( cmdSpec )
+                                      , HasCmdSpec( cmdSpec, env )
                                       , mkCmd, mkCmd'
                                       )
 import MonadIO.Process.ExitStatus     ( ExitStatus( ExitVal ) )
-
--- more-unicode ------------------------
-
-import Data.MoreUnicode.Text  ( 𝕋 )
 
 ------------------------------------------------------------
 --                     local imports                      --
@@ -100,26 +93,82 @@ instance HasExpExitSig (MLCmdSpec ξ) where
   expExitSig = cmdspec ∘ expExitSig
 
 class ToCmdSpec α where
-  toCmdSpec ∷ α → CmdSpec
+  toCmdSpec ∷ MonadIO μ ⇒ α → μ (CmdSpec, [𝕋])
 
 instance ToCmdSpec CmdSpec where
-  toCmdSpec = id
+  toCmdSpec = return ∘ (,[])
+
+-- cmdspec & envmod messages
+instance ToCmdSpec (CmdSpec,[𝕋]) where
+  toCmdSpec = return
 
 instance ToCmdSpec (AbsFile, [𝕋]) where
-  toCmdSpec = uncurry mkCmd'
+  toCmdSpec = return ∘ (,[]) ∘ uncurry mkCmd'
+
+instance ToCmdSpec (AbsFile, [𝕋], [EnvModFrag]) where
+  toCmdSpec (p,as,es) = do
+    (e,env_mod_msgs) ← runEnvMod' (ҙ es) ⊳ getEnvironment
+    return (mkCmd' p as & env ⊢ 𝕵 e, env_mod_msgs)
+
+------------------------------------------------------------
+
+{-| Make an `MLCmdSpec` from a `ToCmdSpec`, using an `OutputDefault` and
+    post-modifying the spec (this is for creating `ToMLCmdSpec` instances. -}
+mkMLCmdSpec ∷ ∀ ξ χ μ .
+       (MonadIO μ, ToCmdSpec χ, OutputDefault ξ) ⇒
+       χ → (MLCmdSpec ξ → MLCmdSpec ξ) → μ (MLCmdSpec ξ)
+mkMLCmdSpec x f =
+  mlMkCmd' Informational CmdR x NoMock ≫ \ m → return $ m & mlCmdSpec ⊧ f
+
+----------------------------------------
+
+class ToMLCmdSpec α ξ where
+  toMLCmdSpec ∷ ∀ μ . (MonadIO μ, OutputDefault ξ) ⇒ α → μ (MLCmdSpec ξ, [𝕋])
+
+----------
+
+instance ToMLCmdSpec (MLCmdSpec ξ) ξ where
+  toMLCmdSpec = return ∘ (,[])
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], [EnvModFrag],
+                      MLCmdSpec ξ → MLCmdSpec ξ) ξ where
+  toMLCmdSpec (a,as,es,f) = do
+    (e,ms) ← runEnvMod' (ҙ es) ⊳ getEnvironment
+    (\ x → (x & env ⊢ 𝕵 e, ms)) ⊳ mkMLCmdSpec (a,as) f
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], MLCmdSpec ξ → MLCmdSpec ξ) ξ where
+  toMLCmdSpec (a,as,f) = toMLCmdSpec (a,as,[]∷[EnvModFrag] ,f)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], [EnvModFrag]) ξ where
+  toMLCmdSpec (a,as,es) = toMLCmdSpec (a,as,es,id ∷ MLCmdSpec ξ → MLCmdSpec ξ)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋]) ξ where
+  toMLCmdSpec (a,as) =
+    toMLCmdSpec (a,as,[]∷[EnvModFrag],id ∷ MLCmdSpec ξ → MLCmdSpec ξ)
+
+------------------------------------------------------------
 
 {- | Create an `MLCmdSpec` using something that can be converted to a `CmdSpec`.
      Exit code is 0 and no signals are expected. -}
-mlMkCmd ∷ (ToCmdSpec χ) ⇒ Severity → CmdRW → χ → ξ → DoMock → MLCmdSpec ξ
-mlMkCmd sev rw cspec x mck =
-   MLCmdSpec sev rw mck (toCmdSpec cspec) (ExitVal 0, x)
+mlMkCmd ∷ (MonadIO μ, ToCmdSpec χ) ⇒
+          Severity → CmdRW → χ → ξ → DoMock → μ (MLCmdSpec ξ)
+mlMkCmd sev rw cspec x mck = do
+  (cmd_spec,_) ← toCmdSpec cspec
+  return $ MLCmdSpec sev rw mck cmd_spec (ExitVal 0, x)
 
 {- | Create an `MLCmdSpec` using something that can be converted to a `CmdSpec`,
      and using `OutputDefault` for mock values. -}
-mlMkCmd' ∷ (ToCmdSpec χ, OutputDefault ξ) ⇒
-           Severity → CmdRW → χ → DoMock → MLCmdSpec ξ
-mlMkCmd' sev rw cspec mck =
-   MLCmdSpec sev rw mck (toCmdSpec cspec) (ExitVal 0, outDef)
+mlMkCmd' ∷ (MonadIO μ, ToCmdSpec χ, OutputDefault ξ) ⇒
+           Severity → CmdRW → χ → DoMock → μ (MLCmdSpec ξ)
+mlMkCmd' sev rw cspec mck = mlMkCmd sev rw cspec outDef mck
 
 {- | Create an `MLCmdSpec` using `OutputDefault` for mock values.  Exit code is
      0 and no signals are expected. -}
