@@ -1,3 +1,7 @@
+0.3.7.0 2022-05-13
+==================
+- add readlink, resolvelink
+
 0.3.6.0 2022-04-10
 ==================
 - add support for env modifications in system{,x}{,'} via ToCmdSpec

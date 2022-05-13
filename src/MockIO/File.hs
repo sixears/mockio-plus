@@ -3,6 +3,7 @@ module MockIO.File
     access, chmod, fexists, fexists', lfexists, lfexists'
   , fileWritable, isWritableDir, isWritableFile
   , lstat, stat
+  , readlink, resolvelink
   , rename
   , unlink
   , writable
@@ -11,38 +12,27 @@ module MockIO.File
   )
 where
 
+import Base1T
+
 -- base --------------------------------
 
-import Control.Applicative     ( pure )
-import Data.Function           ( ($) )
-import Data.Maybe              ( maybe )
-import Control.Monad.IO.Class  ( MonadIO )
-import GHC.Stack               ( HasCallStack )
-import System.IO               ( IO )
-import System.Posix.Types      ( FileMode )
-import Text.Show               ( show )
-
--- base-unicode-symbols ----------------
-
-import Data.Function.Unicode  ( (∘) )
-
--- data-default ------------------------
-
-import Data.Default  ( Default )
-
--- data-textual ------------------------
-
-import Data.Textual  ( Printable, toText )
+import System.Posix.Types  ( FileMode )
 
 -- fpath -------------------------------
 
-import FPath.AsFilePath  ( AsFilePath )
-import FPath.File        ( File, FileAs )
-import FPath.Dir         ( DirAs )
+import FPath.Abs               ( Abs( AbsD ) )
+import FPath.AbsDir            ( root )
+import FPath.AbsFile           ( AbsFile )
+import FPath.AsFilePath        ( AsFilePath )
+import FPath.Error.FPathError  ( AsFPathError )
+import FPath.File              ( File, FileAs )
+import FPath.Dir               ( DirAs )
+import FPath.ToDir             ( toDir )
+import FPath.ToFile            ( toFileY )
 
 -- fstat -------------------------------
 
-import FStat  ( FStat )
+import FStat  ( FStat, FileType( Directory, SymbolicLink ), ftype )
 
 -- lens --------------------------------
 
@@ -58,16 +48,16 @@ import Control.Monad.Log  ( MonadLog, Severity )
 
 -- mockio ------------------------------
 
-import MockIO  ( DoMock )
+import MockIO  ( DoMock( NoMock ), HasDoMock( doMock ) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, mkIOLMER )
-import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ) )
+import MockIO.Log      ( logResult, mkIOLME, mkIOLMER )
+import MockIO.IOClass  ( HasIOClass( ioClass ), IOClass( IORead, IOWrite ) )
 
 -- monadio-error -----------------------
 
-import MonadError.IO.Error  ( AsIOError )
+import MonadError.IO        ( ioThrow )
 
 -- monadio-plus ------------------------
 
@@ -75,24 +65,13 @@ import qualified  MonadIO.File
 import MonadIO.File         ( AccessMode(..), FExists(..), fileFoldLinesH )
 import MonadIO.NamedHandle  ( handle )
 
--- more-unicode ------------------------
-
-import Data.MoreUnicode.Bool     ( 𝔹 )
-import Data.MoreUnicode.Maybe    ( 𝕄, pattern 𝕵, pattern 𝕹 )
-import Data.MoreUnicode.Text     ( 𝕋 )
-
 -- mtl ---------------------------------
 
-import Control.Monad.Except  ( ExceptT, MonadError )
 import Control.Monad.Trans   ( lift )
 
 -- text --------------------------------
 
 import Data.Text  ( lines, pack )
-
--- tfmt --------------------------------
-
-import Text.Fmt  ( fmt )
 
 ------------------------------------------------------------
 --                     local imports                      --
@@ -293,6 +272,7 @@ fileWritable sev mock_value fn =
       vmsg = 𝕵 $ maybe ["file is (potentially) writable"] pure
    in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fileWritable fn)
 
+----------------------------------------
 
 {- | See `MonadIO.File.rename` -}
 rename ∷ ∀ ε γ δ ω μ .
@@ -303,5 +283,56 @@ rename ∷ ∀ ε γ δ ω μ .
 rename sev from to =
   let msg = [fmt|renam '%T' → '%T'|] from to
    in mkIOLMER sev IOWrite msg 𝕹 () (MonadIO.File.rename from to)
+
+----------------------------------------
+
+{- | See `MonadIO.File.readlink` -}
+readlink ∷ ∀ ε ω μ .
+           (MonadIO μ, HasCallStack,
+            AsIOError ε, AsFPathError ε, Printable ε, MonadError ε μ,
+            MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω) ⇒
+           Severity → Abs → AbsFile → DoMock → μ Abs
+readlink sev mock_value fp =
+  let msg = [fmt|rdlnk '%T'|] fp
+      vmsg ∷ 𝕄 (Abs → [𝕋])
+      vmsg = 𝕵 $ pure ∘ [fmt|rdlnk '%T' → '%T'|] fp
+   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.readlink fp)
+
+----------------------------------------
+
+resolvelink' ∷ ∀ ε ω μ .
+              (MonadIO μ, HasCallStack,
+               AsIOError ε, AsFPathError ε, Printable ε, MonadError ε μ,
+               MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω) ⇒
+              Severity → [AbsFile] → AbsFile → μ Abs
+
+resolvelink' sev prior fp = do
+  when (fp ∈ prior) $ ioThrow ([fmtT|readlink cycle detected: %L|] prior)
+  r ← readlink sev (AbsD root) fp NoMock
+  ftype ⊳⊳ lstat sev 𝕹 r NoMock ≫ \ case
+    𝕵 SymbolicLink → case toFileY r of
+                       𝕵 r' → resolvelink' sev (fp:prior) r'
+                       -- this should never happen; toFileY only fails
+                       -- / or ./, and neither can ever be a symlink
+                       𝕹 → ioThrow $ [fmtT|?eh?: '%T' is a symlink!?|] r
+    𝕵 Directory    → return $ AbsD (toDir r)
+    _              → return r
+
+----------
+
+{- | See `MonadIO.File.resolvelink` -}
+resolvelink ∷ ∀ ε ω μ .
+              (MonadIO μ, HasCallStack,
+               AsIOError ε, AsFPathError ε, Printable ε, MonadError ε μ,
+               MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω) ⇒
+              Severity → Abs → AbsFile → DoMock → μ Abs
+
+resolvelink sev mock_value fp do_mock = do
+  let msg = [fmtT|rsvlk '%T'|] fp
+      vmsg ∷ 𝕄 (Abs → [𝕋])
+      vmsg = 𝕵 $ pure ∘ [fmt|rsvlk '%T' → '%T'|] fp
+      log_attr = def & ioClass ⊢ IORead & doMock ⊢ do_mock
+  r ← mkIOLME sev IORead msg mock_value (resolvelink' sev [] fp) do_mock
+  logResult sev log_attr do_mock msg vmsg (𝕽 r)
 
 -- that's all, folks! ----------------------------------------------------------
