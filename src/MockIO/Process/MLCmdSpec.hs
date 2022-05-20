@@ -49,6 +49,7 @@ import MockIO.Process.OutputDefault  ( OutputDefault( outDef ) )
 
 --------------------------------------------------------------------------------
 
+{-| CmdSpec, wrapped along with pieces needed to execute in a MockIO context. -}
 data MLCmdSpec ξ = MLCmdSpec { _severity   ∷ Severity
                              , _cmdrw      ∷ CmdRW
                              , _mock       ∷ DoMock
@@ -122,6 +123,9 @@ mkMLCmdSpec x f =
 
 ----------------------------------------
 
+{-| Convert an `α` to a MLCmdSpec ξ; used to auto-build a mock-context cmdspec
+    from minimal info.
+ -}
 class ToMLCmdSpec α ξ where
   toMLCmdSpec ∷ ∀ μ . (MonadIO μ, OutputDefault ξ) ⇒ α → μ (MLCmdSpec ξ, [𝕋])
 

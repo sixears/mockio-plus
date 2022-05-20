@@ -1,3 +1,11 @@
+0.3.9.0 2022-05-19
+==================
+- add tests for different types using sysN
+
+0.3.8.0 2022-05-16
+==================
+- add ByteString to OutputDefault types
+
 0.3.7.0 2022-05-13
 ==================
 - add readlink, resolvelink
