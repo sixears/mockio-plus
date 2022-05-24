@@ -7,29 +7,19 @@
 {-# LANGUAGE UnicodeSyntax     #-}
 
 module MockIO.Directory
-  ( chdir, inDir, mkdir, mkpath, nuke )
+  ( chdir, inDir, lsdir, mkdir, mkpath, nuke )
 where
+
+import Base1T
 
 -- base --------------------------------
 
-import Control.Monad           ( return )
-import Control.Monad.IO.Class  ( MonadIO )
-import Data.Function           ( (&) )
-import GHC.Stack               ( HasCallStack )
-import System.IO               ( IO )
+import System.IO               ( FilePath )
 import System.Posix.Types      ( FileMode )
 
--- base-unicode-symbols ----------------
+-- directory ---------------------------
 
-import Data.Eq.Unicode  ( (≡) )
-
--- data-default ------------------------
-
-import Data.Default  ( Default( def ) )
-
--- data-textual ------------------------
-
-import Data.Textual  ( Printable )
+import System.Directory  ( listDirectory )
 
 -- exceptions --------------------------
 
@@ -37,10 +27,19 @@ import Control.Monad.Catch  ( MonadCatch )
 
 -- fpath -------------------------------
 
-import FPath.AsFilePath  ( AsFilePath )
-import FPath.Dir         ( DirAs )
-import FPath.DirType     ( DirType )
-import FPath.Parent      ( HasParentMay )
+import FPath.AppendableFPath   ( AppendableFPath, (⫻) )
+import FPath.AsFilePath        ( AsFilePath( filepath ) )
+import FPath.Dir               ( DirAs )
+import FPath.DirType           ( DirType )
+import FPath.Error.FPathError  ( AsFPathError )
+import FPath.Parent            ( HasParentMay )
+import FPath.Parseable         ( Parseable( parse ) )
+import FPath.RelFile           ( RelFile )
+import FPath.ToDir             ( ToDir )
+
+-- fstat -------------------------------
+
+import FStat  ( FStat )
 
 -- log-plus ----------------------------
 
@@ -56,29 +55,23 @@ import MockIO  ( DoMock( DoMock ) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, doMock, mkIOLME )
+import MockIO.Log      ( HasDoMock, doMock, logResult, mkIOLME, mkIOLMER )
 import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ), ioClass )
-
--- monadio-error -----------------------
-
-import MonadError.IO.Error  ( AsIOError )
 
 -- monadio-plus ------------------------
 
 import qualified  MonadIO.Directory
+import MonadIO.FStat  ( pathTypes )
 
--- more-unicode ------------------------
+-- safe --------------------------------
 
-import Data.MoreUnicode.Lens   ( (⊢) )
-import Data.MoreUnicode.Text   ( 𝕋 )
+import Safe  ( succSafe )
 
--- mtl ---------------------------------
+------------------------------------------------------------
+--                     local imports                      --
+------------------------------------------------------------
 
-import Control.Monad.Except  ( ExceptT, MonadError )
-
--- tfmt --------------------------------
-
-import Text.Fmt  ( fmtT )
+import MockIO.FStat  ( lstats )
 
 --------------------------------------------------------------------------------
 
@@ -165,5 +158,47 @@ mkpath ∷ ∀ ε δ ω μ .
       → μ ()
 mkpath sev d p =
   mkIOLME sev IOWrite ([fmtT|mkpath %T|] d) () (MonadIO.Directory.mkpath d p)
+
+----------------------------------------
+
+_lstdr ∷ ∀ ε δ ω μ .
+          (MonadIO μ, DirAs δ,
+           AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+           HasIOClass ω, HasDoMock ω, Default ω, MonadLog (Log ω) μ) ⇒
+         Severity → [FilePath] → δ → DoMock → μ [FilePath]
+_lstdr sev mck_val d do_mock = do
+  let vmsg = 𝕵 $ \ fps → [ [fmt|'%T'|] fp | fp ← fps ]
+      lstd = asIOError $ listDirectory (d ⫥ filepath)
+  mkIOLMER sev IORead ([fmt|lstdr: '%T'|] d) vmsg mck_val lstd do_mock
+
+----------
+
+{-| List a directory's files & subdirs, along with their stat results. -}
+lsdir ∷ ∀ ε μ ρ δ ω ε' .
+        (MonadIO μ,
+         ToDir ρ, DirAs δ, AppendableFPath δ RelFile ρ,
+         Printable (DirType ρ),
+         AsFPathError ε, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+         AsIOError ε', Printable ε',
+         HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
+        Severity → ([(ρ, FStat)], [(DirType ρ, FStat)], [(ρ, ε')]) → δ → DoMock
+      → μ ([(ρ, FStat)], [(DirType ρ, FStat)], [(ρ, ε')])
+lsdir sev mck_val d do_mock = do
+  let msg = [fmtT|lsdir '%T'|] d
+      log_attr = def & ioClass ⊢ IORead & doMock ⊢ do_mock
+      vmsg = 𝕵 $ \(fs,ds,es) → ю [ [ [fmtT|%T|] f | (f,_fstat) ← fs ]
+                                 , [ [fmtT|%T|] d' | (d',_fstat) ← ds ]
+                                 , [ [fmtT|«%T» %T|] p e | (p,e) ← es ]
+                                   ]
+
+      sev' = succSafe sev
+
+      go = do
+        fns ← _lstdr sev' [] d do_mock
+        xs ← sequence $ (fmap (d ⫻) ∘ parse @RelFile) ⊳ fns
+        (foldr pathTypes ([],[],[]) ⩺ \ d' → lstats sev' 𝕹 d' do_mock) xs
+
+  r ← mkIOLME sev IORead msg mck_val go  do_mock
+  logResult sev log_attr do_mock msg vmsg (𝕽 r)
 
 -- that's all, folks! ----------------------------------------------------------

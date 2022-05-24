@@ -1,3 +1,8 @@
+0.3.10.0 2022-05-24
+===================
+- add lsdir, lstat', lstats, stat', stats
+- factor out MockIO.FStat
+
 0.3.9.0 2022-05-19
 ==================
 - add tests for different types using sysN

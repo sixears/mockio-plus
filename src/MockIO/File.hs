@@ -1,12 +1,9 @@
 module MockIO.File
   ( AccessMode(..), FExists(..),
-    access, chmod, fexists, fexists', lfexists, lfexists'
-  , fileWritable, isWritableDir, isWritableFile
-  , lstat, stat
+    chmod, fexists, fexists', lfexists, lfexists'
   , readlink, resolvelink
   , rename
   , unlink
-  , writable
 
   , fileFoldLinesUTF8
   )
@@ -26,13 +23,12 @@ import FPath.AbsFile           ( AbsFile )
 import FPath.AsFilePath        ( AsFilePath )
 import FPath.Error.FPathError  ( AsFPathError )
 import FPath.File              ( File, FileAs )
-import FPath.Dir               ( DirAs )
 import FPath.ToDir             ( toDir )
 import FPath.ToFile            ( toFileY )
 
 -- fstat -------------------------------
 
-import FStat  ( FStat, FileType( Directory, SymbolicLink ), ftype )
+import FStat  ( FileType( Directory, SymbolicLink ), ftype )
 
 -- lens --------------------------------
 
@@ -71,12 +67,13 @@ import Control.Monad.Trans   ( lift )
 
 -- text --------------------------------
 
-import Data.Text  ( lines, pack )
+import Data.Text  ( pack )
 
 ------------------------------------------------------------
 --                     local imports                      --
 ------------------------------------------------------------
 
+import MockIO.FStat     ( lstat )
 import MockIO.OpenFile  ( HEncoding( UTF8 ), FileOpenMode( FileR ), withFile )
 
 --------------------------------------------------------------------------------
@@ -147,63 +144,6 @@ lfexists' sev mock_value fn = do
 
 ----------------------------------------
 
-access ∷ ∀ ε ρ ω μ .
-         (MonadIO μ,
-          AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-          AsFilePath ρ, Printable ρ) ⇒
-         Severity → AccessMode → 𝕄 𝔹 → ρ → DoMock → μ (𝕄 𝔹)
-access sev amode mock_value fn = do
-  let msg = [fmt|accss %T %w|] fn amode
-      vmsg = 𝕵 $ maybe ["Nothing"] (pure ∘ pack ∘ show)
-   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.access amode fn)
-
-----------------------------------------
-
-_stat ∷ ∀ ε ρ ω μ .
-        (MonadIO μ, Printable ε, MonadError ε μ, HasCallStack,
-         MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-         AsFilePath ρ, Printable ρ) ⇒
-        (ρ → ExceptT ε IO (𝕄 FStat))
-      → Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
-_stat s sev mock_value fn mck =
-  let msg  = [fmt|stat  %T|] fn
-      vmsg = 𝕵 $ maybe ["Nothing"] (lines ∘ toText)
-   in mkIOLMER sev IORead msg vmsg mock_value (s fn) mck
-
---------------------
-
-stat ∷ ∀ ε ρ ω μ .
-       (MonadIO μ, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-        MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-        AsFilePath ρ, Printable ρ) ⇒
-       Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
-stat = _stat MonadIO.File.stat
-
-----------
-
-lstat ∷ ∀ ε ρ ω μ .
-        (MonadIO μ,
-         AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-         MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-         AsFilePath ρ, Printable ρ) ⇒
-        Severity → 𝕄 FStat → ρ → DoMock → μ (𝕄 FStat)
-lstat = _stat MonadIO.File.lstat
-
-----------------------------------------
-
-{- | Simple shortcut for file (or directory) is writable by this user; `Nothing`
-     is returned if file does not exist. -}
-writable ∷ ∀ ε ρ ω μ .
-           (MonadIO μ,
-            AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-            MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-            AsFilePath ρ, Printable ρ) ⇒
-           Severity → 𝕄 𝔹 → ρ → DoMock → μ (𝕄 𝔹)
-writable sev = access sev ACCESS_W
-
-----------------------------------------
-
 chmod ∷ ∀ ε ρ ω μ .
         (MonadIO μ,
          AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
@@ -224,53 +164,6 @@ unlink ∷ ∀ ε γ ω μ .
          Severity → γ → DoMock → μ ()
 unlink sev fn =
   mkIOLMER sev IOWrite ([fmt|unlnk %T|] fn) 𝕹 () (MonadIO.File.unlink fn)
-
-----------------------------------------
-
-{- | Is `f` an extant writable file? -}
-isWritableFile ∷ ∀ ε γ ω μ .
-                 (MonadIO μ,
-                  AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-                  MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-                  FileAs γ, Printable γ) ⇒
-                 Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
-
-isWritableFile sev mock_value fn =
-  let msg = [fmt|isWrF %T|] fn
-      vmsg = 𝕵 $ maybe ["file is writable"] pure
-   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.isWritableFile fn)
-
-----------------------------------------
-
-{- | Is `f` an extant writable directory? -}
-isWritableDir ∷ ∀ ε γ ω μ .
-                (MonadIO μ,
-                 AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-                 MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-                 DirAs γ, Printable γ) ⇒
-                Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
-
-isWritableDir sev mock_value fn =
-  let msg = [fmt|isWrD %T|] fn
-      vmsg = 𝕵 $ maybe ["file is writable"] pure
-   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.isWritableDir fn)
-
-----------------------------------------
-
-{- | Test that the given path is a writable (by this user) *file*, or does not
-     exist but is in a directory that is writable & executable by this user.
-     In case of not writable, some error text is returned to say why.
- -}
-fileWritable ∷ ∀ ε γ ω μ .
-               (MonadIO μ,
-                AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
-                MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
-                FileAs γ, Printable γ) ⇒
-               Severity → 𝕄 𝕋 → γ → DoMock → μ (𝕄 𝕋)
-fileWritable sev mock_value fn =
-  let msg = [fmt|filWr %T|] fn
-      vmsg = 𝕵 $ maybe ["file is (potentially) writable"] pure
-   in mkIOLMER sev IORead msg vmsg mock_value (MonadIO.File.fileWritable fn)
 
 ----------------------------------------
 

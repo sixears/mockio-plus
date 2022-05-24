@@ -3,7 +3,7 @@ name:                mockio-plus
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.3.9.0
+version:             0.3.10.0
 synopsis:            MonadIO, Mocked, Logged, with Text.
 description:         MonadIO, Mocked, Logged, with Text.
 cabal-version:       >= 1.10
@@ -15,8 +15,8 @@ build-type:          Simple
 library
   ghc-options:        -O2 -W -Wall -fhelpful-errors
   exposed-modules:    MockIO.Directory
---                    , MockIO.Env
                     , MockIO.File
+                    , MockIO.FStat
                     , MockIO.Flock
                     , MockIO.OpenFile
                     , MockIO.Process
@@ -45,10 +45,10 @@ library
                     , UnicodeSyntax
                     , ViewPatterns
 
-  build-depends:      base, base-unicode-symbols, bytestring, containers
-                    , data-default , data-textual, exceptions, filelock, lens
-                    , logging-effect, mtl, prettyprinter, process, safe, tasty
-                    , tasty-hunit, text, text-icu
+  build-depends:      base, bytestring, containers, data-default , data-textual
+                    , directory, exceptions, filelock, lens, logging-effect, mtl
+                    , prettyprinter, process, safe, tasty, tasty-hunit, text
+                    , text-icu
 
                     , base1t          >= 0.0.4.0
                     , containers-plus >= 0.0.10.1
@@ -58,8 +58,8 @@ library
                     , log-plus        >= 0.0.4.4
                     , mockio          >= 0.0.4.4
                     , mockio-log      >= 0.1.1.0
-                    , monaderror-io   >= 1.2.2.0
-                    , monadio-plus    >= 2.4.2.0
+                    , monaderror-io   >= 1.2.3.0
+                    , monadio-plus    >= 2.4.3.0
                     , more-unicode    >= 0.0.16.0
                     , tasty-plus      >= 1.5.1.1
                     , tfmt            >= 0.2.6.0
