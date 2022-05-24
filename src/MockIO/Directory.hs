@@ -7,7 +7,7 @@
 {-# LANGUAGE UnicodeSyntax     #-}
 
 module MockIO.Directory
-  ( chdir, inDir, lsdir, mkdir, mkpath, nuke )
+  ( chdir, inDir, lsdir, lsdir', mkdir, mkpath, nuke )
 where
 
 import Base1T
@@ -47,7 +47,7 @@ import Log  ( Log, logIO )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( MonadLog, Severity )
+import Control.Monad.Log  ( MonadLog, Severity( Warning ) )
 
 -- mockio ------------------------------
 
@@ -55,8 +55,12 @@ import MockIO  ( DoMock( DoMock ) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, doMock, logResult, mkIOLME, mkIOLMER )
+import MockIO.Log      ( HasDoMock, doMock, logResult, mkIOL, mkIOLME, mkIOLMER)
 import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ), ioClass )
+
+-- monaderror-io -----------------------
+
+import MonadError.IO.Error  ( IOError )
 
 -- monadio-plus ------------------------
 
@@ -174,7 +178,7 @@ _lstdr sev mck_val d do_mock = do
 ----------
 
 {-| List a directory's files & subdirs, along with their stat results. -}
-lsdir ∷ ∀ ε μ ρ δ ω ε' .
+lsdir ∷ ∀ ε ε' ρ δ ω μ .
         (MonadIO μ,
          ToDir ρ, DirAs δ, AppendableFPath δ RelFile ρ,
          Printable (DirType ρ),
@@ -200,5 +204,23 @@ lsdir sev mck_val d do_mock = do
 
   r ← mkIOLME sev IORead msg mck_val go  do_mock
   logResult sev log_attr do_mock msg vmsg (𝕽 r)
+
+--------------------
+
+{-| Simplified version of `lsdir`, where the mock value is all empties; and
+    the errors are logged with `warnIO` but not returned. -}
+lsdir' ∷ ∀ ε ρ δ ω μ .
+         (MonadIO μ,
+          ToDir ρ, DirAs δ, AppendableFPath δ RelFile ρ,
+          Printable (DirType ρ),
+          AsFPathError ε, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+          HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
+         Severity → δ → DoMock → μ ([(ρ, FStat)], [(DirType ρ, FStat)])
+lsdir' sev d do_mock = do
+  (fs,ds,es) ← lsdir @_ @IOError sev ([],[],[]) d do_mock
+  forM_ es $ \ (f,e) →
+    -- like `MockIO.Log.warnIO`; but not a fixed MockIOClass to Log
+    mkIOL Warning def ([fmtT|lsdir: '%T' ! %T|] f e) () (return ()) do_mock
+  return (fs,ds)
 
 -- that's all, folks! ----------------------------------------------------------
