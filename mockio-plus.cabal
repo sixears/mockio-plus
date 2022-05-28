@@ -3,7 +3,7 @@ name:                mockio-plus
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             0.3.11.0
+version:             0.3.11.1
 synopsis:            MonadIO, Mocked, Logged, with Text.
 description:         MonadIO, Mocked, Logged, with Text.
 cabal-version:       >= 1.10

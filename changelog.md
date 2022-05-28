@@ -1,3 +1,7 @@
+0.3.11.1 2022-05-28
+==================
+- fix systemx' to not always set io_class doMock to DoMock
+
 0.3.11.0 2022-05-24
 ===================
 - add lsdir'

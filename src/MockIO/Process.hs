@@ -137,7 +137,7 @@ systemx' sev rw (mck_estat, mck_res) inh cspec mck = do
   inh'                     ← makeIStream sev inh mck
   (cmd_spec, env_mod_msgs) ← toCmdSpec cspec
   let mck_val       = (exitInfo mck_estat cmd_spec (Pid 0), mck_res)
-      io_class      = def & ioClass ⊢ (ioc rw) & doMock ⊢ DoMock
+      io_class      = def & ioClass ⊢ (ioc rw) & doMock ⊢ mck
       pp            ∷ 𝕋 → 𝕋
       pp t          = if mck ≡ DoMock then "(" ⊕ t ⊕ ")" else t
       penv ∷ (MonadIO ν ,MonadLog (Log ω) ν) ⇒ Pid → CmdSpec → ν ()
