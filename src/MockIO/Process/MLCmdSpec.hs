@@ -38,7 +38,7 @@ import MonadIO.Process.CmdSpec        ( CmdSpec, HasCmdArgs( cmdArgs )
                                       , HasCmdSpec( cmdSpec, env )
                                       , mkCmd, mkCmd'
                                       )
-import MonadIO.Process.ExitStatus     ( ExitStatus( ExitVal ) )
+import MonadIO.Process.ExitStatus     ( ExitStatus( ExitVal ), evOK )
 
 ------------------------------------------------------------
 --                     local imports                      --
@@ -129,6 +129,9 @@ mkMLCmdSpec x f =
 class ToMLCmdSpec α ξ where
   toMLCmdSpec ∷ ∀ μ . (MonadIO μ, OutputDefault ξ) ⇒ α → μ (MLCmdSpec ξ, [𝕋])
 
+ӡ ∷ [EnvModFrag]
+ӡ = []
+
 ----------
 
 instance ToMLCmdSpec (MLCmdSpec ξ) ξ where
@@ -136,11 +139,9 @@ instance ToMLCmdSpec (MLCmdSpec ξ) ξ where
 
 --------------------
 
-instance ToMLCmdSpec (AbsFile, [𝕋], [EnvModFrag],
-                      MLCmdSpec ξ → MLCmdSpec ξ) ξ where
-  toMLCmdSpec (a,as,es,f) = do
-    (e,ms) ← runEnvMod' (ҙ es) ⊳ getEnvironment
-    (\ x → (x & env ⊢ 𝕵 e, ms)) ⊳ mkMLCmdSpec (a,as) f
+instance ToMLCmdSpec (AbsFile, [𝕋]) ξ where
+  toMLCmdSpec (a,as) =
+    toMLCmdSpec (a,as,[]∷[EnvModFrag],id ∷ MLCmdSpec ξ → MLCmdSpec ξ)
 
 --------------------
 
@@ -154,9 +155,81 @@ instance ToMLCmdSpec (AbsFile, [𝕋], [EnvModFrag]) ξ where
 
 --------------------
 
-instance ToMLCmdSpec (AbsFile, [𝕋]) ξ where
-  toMLCmdSpec (a,as) =
-    toMLCmdSpec (a,as,[]∷[EnvModFrag],id ∷ MLCmdSpec ξ → MLCmdSpec ξ)
+instance ToMLCmdSpec (AbsFile, [𝕋], [EnvModFrag],
+                      MLCmdSpec ξ → MLCmdSpec ξ) ξ where
+  toMLCmdSpec (a,as,es,f) = do
+    (e,ms) ← runEnvMod' (ҙ es) ⊳ getEnvironment
+    (\ x → (x & env ⊢ 𝕵 e, ms)) ⊳ mkMLCmdSpec (a,as) f
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity) ξ where
+  toMLCmdSpec (a,as,sev) =
+    toMLCmdSpec (a,as,ӡ,(& severity ⊢ sev)∷MLCmdSpec ξ → MLCmdSpec ξ)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], DoMock) ξ where
+  toMLCmdSpec (a,as,m) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & mock ⊢ m
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], ξ) ξ where
+  toMLCmdSpec (a,as,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & mock_value ⊢ (evOK,mv)
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], (ExitStatus,ξ)) ξ where
+  toMLCmdSpec (a,as,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & mock_value ⊢ mv
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity, DoMock) ξ where
+  toMLCmdSpec (a,as,sev,m) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & severity ⊢ sev & mock ⊢ m
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity, ξ) ξ where
+  toMLCmdSpec (a,as,sev,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & severity ⊢ sev & mock_value ⊢ (evOK,mv)
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity, DoMock, ξ) ξ where
+  toMLCmdSpec (a,as,sev,m,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & severity ⊢ sev & mock ⊢ m & mock_value ⊢ (evOK,mv)
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity, (ExitStatus,ξ)) ξ where
+  toMLCmdSpec (a,as,sev,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & severity ⊢ sev & mock_value ⊢ mv
+     in toMLCmdSpec (a,as,ӡ,set_attr)
+
+--------------------
+
+instance ToMLCmdSpec (AbsFile, [𝕋], Severity, DoMock, (ExitStatus,ξ)) ξ where
+  toMLCmdSpec (a,as,sev,m,mv) =
+    let set_attr ∷ MLCmdSpec ξ → MLCmdSpec ξ
+        set_attr x = x & severity ⊢ sev & mock ⊢ m & mock_value ⊢ mv
+     in toMLCmdSpec (a,as,ӡ,set_attr)
 
 ------------------------------------------------------------
 
