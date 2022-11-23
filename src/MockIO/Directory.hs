@@ -27,7 +27,8 @@ import Control.Monad.Catch  ( MonadCatch )
 
 -- fpath -------------------------------
 
-import FPath.AppendableFPath   ( AppendableFPath, (⫻) )
+import FPath.AppendableFPath   ( AppendableFPath, AppendableFPathD
+                               , AppendableFPathF, (⫻) )
 import FPath.AsFilePath        ( AsFilePath( filepath ) )
 import FPath.Dir               ( DirAs )
 import FPath.DirType           ( DirType )
@@ -178,15 +179,19 @@ _lstdr sev mck_val d do_mock = do
 ----------
 
 {-| List a directory's files & subdirs, along with their stat results. -}
-lsdir ∷ ∀ ε ε' ρ δ ω μ .
+lsdir ∷ ∀ ε ε' ρ ω μ .
         (MonadIO μ,
-         ToDir ρ, DirAs δ, AppendableFPath δ RelFile ρ,
-         Printable (DirType ρ),
+         ToDir ρ, DirAs (AppendableFPathD ρ),
+         AppendableFPath ρ, AppendableFPathF ρ ~ RelFile, Printable (DirType ρ),
          AsFPathError ε, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          AsIOError ε', Printable ε',
          HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
-        Severity → ([(ρ, FStat)], [(DirType ρ, FStat)], [(ρ, ε')]) → δ → DoMock
+        Severity
+      → ([(ρ, FStat)], [(DirType ρ, FStat)], [(ρ, ε')])
+      → AppendableFPathD ρ
+      → DoMock
       → μ ([(ρ, FStat)], [(DirType ρ, FStat)], [(ρ, ε')])
+
 lsdir sev mck_val d do_mock = do
   let msg = [fmtT|lsdir '%T'|] d
       log_attr = def & ioClass ⊢ IORead & doMock ⊢ do_mock
@@ -209,13 +214,16 @@ lsdir sev mck_val d do_mock = do
 
 {-| Simplified version of `lsdir`, where the mock value is all empties; and
     the errors are logged with `warnIO` but not returned. -}
-lsdir' ∷ ∀ ε ρ δ ω μ .
+
+lsdir' ∷ ∀ ε ρ ω μ .
          (MonadIO μ,
-          ToDir ρ, DirAs δ, AppendableFPath δ RelFile ρ,
-          Printable (DirType ρ),
-          AsFPathError ε, AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
+          ToDir ρ, DirAs (AppendableFPathD ρ),
+          AppendableFPath ρ, AppendableFPathF ρ ~ RelFile, Printable(DirType ρ),
+          AsFPathError ε, AsIOError ε, Printable ε, MonadError ε μ,HasCallStack,
           HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
-         Severity → δ → DoMock → μ ([(ρ, FStat)], [(DirType ρ, FStat)])
+         Severity → AppendableFPathD ρ → DoMock
+       → μ ([(ρ, FStat)], [(DirType ρ, FStat)])
+
 lsdir' sev d do_mock = do
   (fs,ds,es) ← lsdir @_ @IOError sev ([],[],[]) d do_mock
   forM_ es $ \ (f,e) →

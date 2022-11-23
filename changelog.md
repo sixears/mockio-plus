@@ -1,3 +1,7 @@
+0.3.12.1 2022-11-23
+===================
+- update for fpath>=1.3.2.1 (AppendableFPath type family)
+
 0.3.12.0 2022-06-04
 ==================
 - add many more instances of ToMLCmdSpec
