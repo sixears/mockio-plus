@@ -1,84 +1,94 @@
+{-# LANGUAGE UnicodeSyntax #-}
 module MockIO.File
-  ( AccessMode(..), FExists(..),
-    chmod, fexists, fexists', lfexists, lfexists'
-  , readlink, resolvelink
-  , rename
-  , unlink
-
+  ( AccessMode(..)
+  , FExists(..)
+  , chmod
+  , fexists
+  , fexists'
   , fileFoldLinesUTF8
-  )
-where
+  , lfexists
+  , lfexists'
+  , readlink
+  , rename
+  , resolvelink
+  , unlink
+  ) where
 
 import Base1T
 
 -- base --------------------------------
 
-import System.Posix.Types  ( FileMode )
+import System.Posix.Types ( FileMode )
 
 -- fpath -------------------------------
 
-import FPath.Abs               ( Abs( AbsD ) )
-import FPath.AbsDir            ( root )
-import FPath.AbsFile           ( AbsFile )
-import FPath.AsFilePath        ( AsFilePath )
-import FPath.Error.FPathError  ( AsFPathError )
-import FPath.File              ( File, FileAs )
-import FPath.ToDir             ( toDir )
-import FPath.ToFile            ( toFileY )
+import FPath.Abs              ( Abs(AbsD) )
+import FPath.AbsDir           ( root )
+import FPath.AbsFile          ( AbsFile )
+import FPath.AsFilePath       ( AsFilePath )
+import FPath.Error.FPathError ( AsFPathError )
+import FPath.File             ( File, FileAs )
+import FPath.ToDir            ( toDir )
+import FPath.ToFile           ( toFileY )
 
 -- fstat -------------------------------
 
-import FStat  ( FileType( Directory, SymbolicLink ), ftype )
+import FStat ( FileType(Directory, SymbolicLink), ftype )
 
 -- lens --------------------------------
 
-import Control.Lens  ( view )
+import Control.Lens ( view )
 
 -- log-plus ----------------------------
 
-import Log  ( Log )
+import Log ( Log )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( MonadLog, Severity )
+import Control.Monad.Log ( MonadLog, Severity )
 
 -- mockio ------------------------------
 
-import MockIO  ( DoMock( NoMock ), HasDoMock( doMock ) )
+import MockIO ( DoMock(NoMock), HasDoMock(doMock) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( logResult, mkIOLME, mkIOLMER )
-import MockIO.IOClass  ( HasIOClass( ioClass ), IOClass( IORead, IOWrite ) )
+import MockIO.IOClass ( HasIOClass(ioClass), IOClass(IORead, IOWrite) )
+import MockIO.Log     ( logResult, mkIOLME, mkIOLMER )
 
 -- monadio-error -----------------------
 
-import MonadError.IO        ( ioThrow )
+import MonadError.IO ( ioThrow )
 
 -- monadio-plus ------------------------
 
-import qualified  MonadIO.File
-import MonadIO.File         ( AccessMode(..), FExists(..), fileFoldLinesH )
-import MonadIO.NamedHandle  ( handle )
+import MonadIO.File        ( AccessMode(..), FExists(..), fileFoldLinesH )
+import MonadIO.File qualified
+import MonadIO.NamedHandle ( handle )
 
 -- mtl ---------------------------------
 
-import Control.Monad.Trans   ( lift )
+import Control.Monad.Trans ( lift )
 
 -- text --------------------------------
 
-import Data.Text  ( pack )
+import Data.Text ( pack )
 
 ------------------------------------------------------------
 --                     local imports                      --
 ------------------------------------------------------------
 
-import MockIO.FStat     ( lstat )
-import MockIO.OpenFile  ( HEncoding( UTF8 ), FileOpenMode( FileR ), withFile )
+import MockIO.FStat    ( lstat )
+import MockIO.OpenFile ( FileOpenMode(FileR), HEncoding(UTF8), withFile )
 
 --------------------------------------------------------------------------------
 
-{- | Work over a file, accumulating results, line-by-line. -}
+{- | Work over a file, accumulating results, line-by-line.
+     `sev` is the severity to log messages.  `msgf` is an optional logging
+     message for opening the file (if `Nothing`, then a default is used).
+     `a` is the initial value of the fold; `io' is the folding function; `fn` is
+     the file to read.  `w` is the mock value.
+ -}
 fileFoldLinesUTF8 ∷ ∀ ε α γ ω μ .
                     (MonadIO μ, FileAs γ,
                      AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
@@ -207,7 +217,7 @@ resolvelink' sev prior fp = do
                        𝕵 r' → resolvelink' sev (fp:prior) r'
                        -- this should never happen; toFileY only fails
                        -- / or ./, and neither can ever be a symlink
-                       𝕹 → ioThrow $ [fmtT|?eh?: '%T' is a symlink!?|] r
+                       𝕹    → ioThrow $ [fmtT|?eh?: '%T' is a symlink!?|] r
     𝕵 Directory    → return $ AbsD (toDir r)
     _              → return r
 

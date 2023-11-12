@@ -1,3 +1,7 @@
+0.3.13.0 2023-11-12
+===================
+- +MockIO.Directory.subdirs
+
 0.3.12.1 2022-11-23
 ===================
 - update for fpath>=1.3.2.1 (AppendableFPath type family)

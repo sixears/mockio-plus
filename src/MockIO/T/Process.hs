@@ -52,7 +52,7 @@ import Control.Monad.Log  ( MonadLog, Severity( Notice )
 
 -- mockio ------------------------------
 
-import MockIO.DoMock  ( DoMock( NoMock ) )
+import MockIO.DoMock  ( DoMock( DoMock, NoMock ) )
 
 -- mockio-log --------------------------
 
@@ -127,18 +127,16 @@ type 𝔹𝕊 = ByteString
     We do this by running a simple grep against a temporary file, each time
     checking that the result is as expected (in a given type).
 -}
-
-xx ∷ MLCmdSpec ξ → MLCmdSpec ξ
-xx x = x & expExitVal ⊢ Set.fromList [1]
-
 sysTests ∷ TestTree
 sysTests = testGroup "sysTests" $
   let
+    -- | spec modifier: expect cmd exit 1
+    exit1 ∷ MLCmdSpec ξ → MLCmdSpec ξ
+    exit1 x = x & expExitVal ⊢ Set.fromList [1]
+
+    -- | foo will be written as a tempfile, with the following contents
     foo ∷ 𝕋
     foo = unlines [ "jimmy 7", "martyn 12", "marbyns 3" ]
-    check ∷ (OutputDefault γ, ToMaybeTexts γ, Printable β,
-             OutputHandles ζ γ, MakeProc ζ) ⇒
-            α → 𝕋 → ((ExitInfo,γ) → Assertion) → (α, β → IO ())
 
     -- simplifed sysN, with a ProcError error, takes specifically an AbsFile,
     -- 𝕋 args, an MLCmdSpec adjuster, discards logging and never mocks.
@@ -149,17 +147,33 @@ sysTests = testGroup "sysTests" $
     sysN' p as f =
       discardLogging ∘ flip runReaderT NoMock $ sysN (p, as, f)
 
---    grp t f = sysN @ProcError (Paths.grep, [t, toText f])
+    -- grep for text t in file f
     grp t f = sysN' Paths.grep [t, toText f] id
     -- grep, but expecting an exit 1
-    grp' t f = sysN' Paths.grep [t, toText f] xx
---    grp' t f = sysN @ProcError (toMLCmdSpec (Paths.grep, [t, toText f], xx))
+    grp' t f = sysN' Paths.grep [t, toText f] exit1
+
+    -- grep, but mocked
+    grpM ∷ ∀ μ ζ .
+            (MonadIO μ, OutputHandles ζ 𝕋, MakeProc ζ, MonadError ProcError μ) ⇒
+            𝕋 → AbsFile → μ (ExitInfo, 𝕋)
+    grpM t f =
+      let args = [t, toText f]
+      in  discardLogging ∘ flip runReaderT DoMock $ sysN(Paths.grep,args,DoMock)
+
+    check ∷ (OutputDefault γ, ToMaybeTexts γ, Printable β,
+             OutputHandles ζ γ, MakeProc ζ) ⇒
+            α → 𝕋 → ((ExitInfo,γ) → Assertion) → (α, β → IO ())
+
     check name t p =
-      (name, \ f → ѥ (grp t f) ≫ \ case 𝕽 r → p r
-                                        𝕷 e → assertFailure (show e)
+      (name, \ f → ѥ (grp  t f) ≫ \ case 𝕽 r → p r
+                                         𝕷 e → assertFailure (show e)
       )
     check' name t p =
       (name, \ f → ѥ (grp' t f) ≫ \ case 𝕽 r → p r
+                                         𝕷 e → assertFailure (show e)
+      )
+    checkM name t p =
+      (name, \ f → ѥ (grpM t f) ≫ \ case 𝕽 r → p r
                                          𝕷 e → assertFailure (show e)
       )
 
@@ -173,6 +187,8 @@ sysTests = testGroup "sysTests" $
                                        ((() @=?) ∘ snd)
                         , check "Text" "mar"
                                        ((("martyn 12\nmarbyns 3\n"∷𝕋)@=?) ∘ snd)
+                        , checkM "Text - mock" "mar"
+                                       (("" @=?) ∘ snd)
                         , check "Bytestring" "mar"
                                        ((("martyn 12\nmarbyns 3\n"∷𝔹𝕊)@=?) ∘snd)
                         , check "[Text]" "mar"

@@ -7,76 +7,85 @@
 {-# LANGUAGE UnicodeSyntax     #-}
 
 module MockIO.Directory
-  ( chdir, inDir, lsdir, lsdir', mkdir, mkpath, nuke )
-where
+  ( chdir
+  , inDir
+  , lsdir
+  , lsdir'
+  , mkdir
+  , mkpath
+  , nuke
+  , subdirs
+  ) where
 
 import Base1T
 
 -- base --------------------------------
 
-import System.IO               ( FilePath )
-import System.Posix.Types      ( FileMode )
+import System.IO          ( FilePath )
+import System.Posix.Types ( FileMode )
 
 -- directory ---------------------------
 
-import System.Directory  ( listDirectory )
+import System.Directory ( listDirectory )
 
 -- exceptions --------------------------
 
-import Control.Monad.Catch  ( MonadCatch )
+import Control.Monad.Catch ( MonadCatch )
 
 -- fpath -------------------------------
 
-import FPath.AppendableFPath   ( AppendableFPath, AppendableFPathD
-                               , AppendableFPathF, (⫻) )
-import FPath.AsFilePath        ( AsFilePath( filepath ) )
-import FPath.Dir               ( DirAs )
-import FPath.DirType           ( DirType )
-import FPath.Error.FPathError  ( AsFPathError )
-import FPath.Parent            ( HasParentMay )
-import FPath.Parseable         ( Parseable( parse ) )
-import FPath.RelFile           ( RelFile )
-import FPath.ToDir             ( ToDir )
+import FPath.AbsDir           ( AbsDir )
+import FPath.AbsFile          ( AbsFile )
+import FPath.AppendableFPath  ( AppendableFPath, AppendableFPathD,
+                                AppendableFPathF, (⫻) )
+import FPath.AsFilePath       ( AsFilePath(filepath) )
+import FPath.Dir              ( DirAs )
+import FPath.DirType          ( DirType )
+import FPath.Error.FPathError ( AsFPathError )
+import FPath.Parent           ( HasParentMay )
+import FPath.Parseable        ( Parseable(parse) )
+import FPath.RelFile          ( RelFile )
+import FPath.ToDir            ( ToDir )
 
 -- fstat -------------------------------
 
-import FStat  ( FStat )
+import FStat ( FStat )
 
 -- log-plus ----------------------------
 
-import Log  ( Log, logIO )
+import Log ( Log, logIO )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( MonadLog, Severity( Warning ) )
+import Control.Monad.Log ( MonadLog, Severity(Warning) )
 
 -- mockio ------------------------------
 
-import MockIO  ( DoMock( DoMock ) )
+import MockIO ( DoMock(DoMock) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log      ( HasDoMock, doMock, logResult, mkIOL, mkIOLME, mkIOLMER)
-import MockIO.IOClass  ( HasIOClass, IOClass( IORead, IOWrite ), ioClass )
+import MockIO.IOClass ( HasIOClass, IOClass(IORead, IOWrite), ioClass )
+import MockIO.Log     ( HasDoMock, doMock, logResult, mkIOL, mkIOLME, mkIOLMER )
 
 -- monaderror-io -----------------------
 
-import MonadError.IO.Error  ( IOError )
+import MonadError.IO.Error ( IOError )
 
 -- monadio-plus ------------------------
 
-import qualified  MonadIO.Directory
-import MonadIO.FStat  ( pathTypes )
+import MonadIO.Directory qualified
+import MonadIO.FStat     ( pathTypes )
 
 -- safe --------------------------------
 
-import Safe  ( succSafe )
+import Safe ( succSafe )
 
 ------------------------------------------------------------
 --                     local imports                      --
 ------------------------------------------------------------
 
-import MockIO.FStat  ( lstats )
+import MockIO.FStat ( lstats )
 
 --------------------------------------------------------------------------------
 
@@ -230,5 +239,16 @@ lsdir' sev d do_mock = do
     -- like `MockIO.Log.warnIO`; but not a fixed MockIOClass to Log
     mkIOL Warning def ([fmtT|lsdir: '%T' ! %T|] f e) () (return ()) do_mock
   return (fs,ds)
+
+------------------------------------------------------------
+
+{-| A variant of `lsdir'` that just returns the subdirectories.  For complex
+    type issues that I do not grok; it only works for `AbsDir`. -}
+subdirs ∷ ∀ ε ω μ .
+          (MonadIO μ,
+           AsFPathError ε,AsIOError ε,Printable ε,MonadError ε μ,HasCallStack,
+           HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
+          Severity → AbsDir → DoMock → μ [AbsDir]
+subdirs sv d k = fst ⊳⊳ snd ⊳ lsdir' @_ @AbsFile sv d k
 
 -- that's all, folks! ----------------------------------------------------------

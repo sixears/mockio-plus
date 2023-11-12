@@ -142,13 +142,13 @@ systemx' sev rw (mck_estat, mck_res) inh cspec mck = do
       pp t          = if mck ≡ DoMock then "(" ⊕ t ⊕ ")" else t
       penv ∷ (MonadIO ν ,MonadLog (Log ω) ν) ⇒ Pid → CmdSpec → ν ()
       penv p c    = do
-        logIO sev io_class $ pp $ [fmt|<CMD> «%w» %T|] p cmd_spec
         e ← (flip fromMaybe (c ⊣ env)) ⊳ getEnvironment
         forM_ env_mod_msgs $ \ t →
-          logIO (succSafe sev) io_class $ pp $ [fmt|<ENVMOD> «%w» %t|] p t
+          logIO (succSafe sev) io_class $ pp $ [fmt|<ENV> «%w» %t|] p t
         forM_ (sortOn fst $ toList e) $ \ (ek,ev) →
           logIO (succSafe $ succSafe sev) io_class $
             pp $ [fmt|<ENV> «%w» %q → %q|] p ek ev
+        logIO sev io_class $ pp $ [fmt|<CMD> «%w» %T|] p cmd_spec
 
   (result,p) ← if DoMock ≡ mck
                then do penv (Pid 0) cmd_spec
