@@ -1,11 +1,8 @@
-#!/run/current-system/sw/bin/nix-shell
-#!nix-shell -i bash -p cabal2nix
+#!/home/martyn/bin/bash
 
-set -eu -o pipefail
+pkgs_gnugrep=$(dirname $( dirname $( realpath $(type -p grep) )))
 
-echo cabal2nix . '>' cabal.nix
-cabal2nix . > cabal.nix
-for i in $( find proto -type f -name \*.hs -printf '%P\n' ); do
-  echo nix-shell --command '${env_replace}' env-replace.nix '<' proto/$i '>' src/$i
-  nix-shell --command '${env_replace}' env-replace.nix < proto/$i > src/$i
+for f in $( find proto/ -type f -name \*.hs ); do
+  t=src/"${f#proto/}"
+  perl -plE "s{__gnugrep__}{$pkgs_gnugrep}g" "$f" > "$t"
 done

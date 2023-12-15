@@ -10,6 +10,7 @@ import Data.Foldable  ( any )
 import Data.Function  ( flip )
 import Data.Maybe     ( isJust )
 import GHC.Exts       ( IsList( toList ) )
+import System.IO      ( Handle )
 
 -- bytestring --------------------------
 
@@ -153,12 +154,11 @@ sysTests = testGroup "sysTests" $
     grp' t f = sysN' Paths.grep [t, toText f] exit1
 
     -- grep, but mocked
-    grpM ∷ ∀ μ ζ .
-            (MonadIO μ, OutputHandles ζ 𝕋, MakeProc ζ, MonadError ProcError μ) ⇒
-            𝕋 → AbsFile → μ (ExitInfo, 𝕋)
+    grpM ∷ ∀ μ . (MonadIO μ, OutputHandles Handle 𝕋, MakeProc Handle,
+                  MonadError ProcError μ) ⇒ 𝕋 → AbsFile → μ (ExitInfo, 𝕋)
     grpM t f =
       let args = [t, toText f]
-      in  discardLogging ∘ flip runReaderT DoMock $ sysN(Paths.grep,args,DoMock)
+      in  discardLogging ∘ flip runReaderT DoMock $ sysN @_ @_ @_ @_ @Handle (Paths.grep,args,DoMock)
 
     check ∷ (OutputDefault γ, ToMaybeTexts γ, Printable β,
              OutputHandles ζ γ, MakeProc ζ) ⇒
@@ -197,9 +197,12 @@ sysTests = testGroup "sysTests" $
     , -- use binary input here to generate a stderr msg from grep
       testsWithTempfile ("\x000"⊕foo)
                         [ check "([Text],[Text])" "mar"
-                                 (\ (_,(o,[e])) → do
-                                     (([]∷[𝕋]) @=? o)
-                                     assertSuffix "binary file matches" e
+                                 (\ x →
+                                    case x of
+                                      (_,(o,[e])) → do
+                                        (([]∷[𝕋]) @=? o)
+                                        assertSuffix "binary file matches" e
+                                      e → assertFailure $ show e
                                  )
                         ]
     , testsWithTempfile ("\x000"⊕foo)
