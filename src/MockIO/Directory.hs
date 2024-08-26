@@ -92,7 +92,7 @@ import MockIO.FStat ( lstats )
 {- | Change working directory. -}
 chdir ∷ ∀ ε δ ω μ .
         (MonadIO μ,
-         AsIOError ε, MonadError ε μ, HasCallStack,
+         AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          DirAs δ) ⇒
         Severity -- ^ logging level
@@ -105,9 +105,9 @@ chdir sev d =
 ----------------------------------------
 
 {- | Perform IO with the dir *temporarily* changed to a given directory. -}
-inDir ∷ ∀ ε δ α ω μ .
-        (MonadIO μ, DirAs δ,AsIOError ε, MonadError ε μ, HasCallStack,
-         HasDoMock ω, HasIOClass ω, Default ω, MonadLog (Log ω) μ) ⇒
+inDir ∷ ∀ ε δ α ω μ . (MonadIO μ, DirAs δ, AsIOError ε, Printable ε,
+                       MonadError ε μ, HasCallStack, HasDoMock ω, HasIOClass ω,
+                       Default ω, MonadLog (Log ω) μ) ⇒
         Severity       -- ^ logging level
       → δ              -- ^ directory to work in
       → α              -- ^ value to return if mocked
@@ -128,7 +128,7 @@ inDir sev d mck_val io mck = do
 {- | Forcibly remove a file or directory (including any descendents). -}
 nuke ∷ ∀ ε ρ ω μ .
         (MonadIO μ,
-         AsIOError ε, MonadError ε μ, HasCallStack,
+         AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          AsFilePath ρ, Printable ρ) ⇒
         Severity -- ^ logging level
@@ -146,7 +146,7 @@ nuke sev d =
  -}
 mkdir ∷ ∀ ε δ ω μ .
         (MonadIO μ,
-         AsIOError ε, MonadError ε μ, HasCallStack,
+         AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          DirAs δ) ⇒
         Severity -- ^ logging level
@@ -161,7 +161,7 @@ mkdir sev d p =
 
 mkpath ∷ ∀ ε δ ω μ .
         (MonadIO μ, MonadCatch μ,
-         AsIOError ε, MonadError ε μ, HasCallStack,
+         AsIOError ε, Printable ε, MonadError ε μ, HasCallStack,
          MonadLog (Log ω) μ, Default ω, HasIOClass ω, HasDoMock ω,
          DirAs δ, HasParentMay δ, HasParentMay (DirType δ),
          DirType δ ~ DirType (DirType δ), δ ~ DirType δ) ⇒

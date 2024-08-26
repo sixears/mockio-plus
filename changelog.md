@@ -1,3 +1,7 @@
+0.3.15.0 2024-07-12
+===================
+- add Printable e for many e in MockIO.Directory
+
 0.3.14.0 2023-12-15
 ===================
 - upgrade for GHC9
