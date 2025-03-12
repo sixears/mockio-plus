@@ -1,3 +1,7 @@
+0.3.16.0 2025-03-12
+===================
+- handle upgraded unix (>= 2.8)
+
 0.3.15.0 2024-07-12
 ===================
 - add Printable e for many e in MockIO.Directory

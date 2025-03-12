@@ -1,33 +1,34 @@
+{-# LANGUAGE UnicodeSyntax #-}
 module MockIO.T.Process
-  ( tests )
-where
+  ( tests
+  ) where
 
-import Base1T  hiding  ( toList )
+import Base1T hiding ( toList )
 
 -- base --------------------------------
 
-import Data.Foldable  ( any )
-import Data.Function  ( flip )
-import Data.Maybe     ( isJust )
-import GHC.Exts       ( IsList( toList ) )
-import System.IO      ( Handle )
+import Data.Foldable ( any )
+import Data.Function ( flip )
+import Data.Maybe    ( isJust )
+import GHC.Exts      ( IsList(toList) )
+import System.IO     ( Handle )
 
 -- bytestring --------------------------
 
-import qualified  Data.ByteString  as  BS
-import Data.ByteString  ( ByteString )
+import Data.ByteString ( ByteString )
+import Data.ByteString qualified as BS
 
 -- containers --------------------------
 
-import qualified Data.Set  as  Set
+import Data.Set qualified as Set
 
 -- containers-plus ---------------------
 
-import ContainersPlus.Insert  ( (⨭) )
+import ContainersPlus.Insert ( (⨭) )
 
 -- env-plus ----------------------------
 
-import Env.Types  ( ӭ, ә )
+import Env.Types ( ә, ӭ )
 
 -- exceptions --------------------------
 
@@ -35,88 +36,88 @@ import Control.Monad.Catch ( MonadMask )
 
 -- fpath -------------------------------
 
-import FPath.AbsFile  ( AbsFile, absfile )
+import FPath.AbsFile ( AbsFile, absfile )
 
 -- lens --------------------------------
 
-import Control.Lens.Fold  ( (^?) )
+import Control.Lens.Fold ( (^?) )
 
 -- log-plus ----------------------------
 
-import Log           ( Log )
-import Log.LogEntry  ( LogEntry, logdoc )
+import Log          ( Log )
+import Log.LogEntry ( LogEntry, logdoc )
 
 -- logging-effect ----------------------
 
-import Control.Monad.Log  ( MonadLog, Severity( Notice )
-                          , discardLogging, runPureLoggingT )
+import Control.Monad.Log ( MonadLog, Severity(Notice), discardLogging,
+                           runPureLoggingT )
 
 -- mockio ------------------------------
 
-import MockIO.DoMock  ( DoMock( DoMock, NoMock ) )
+import MockIO.DoMock ( DoMock(DoMock, NoMock) )
 
 -- mockio-log --------------------------
 
-import MockIO.Log          ( logit )
-import MockIO.MockIOClass  ( MockIOClass )
+import MockIO.Log         ( logit )
+import MockIO.MockIOClass ( MockIOClass )
 
 -- monaderror-io -----------------------
 
-import MonadError.IO.Error  ( IOError, ioeErrorString
-                            , ioeFilename, ioeLocation, isNoSuchThingError )
+import MonadError.IO.Error ( IOError, ioeErrorString, ioeFilename, ioeLocation,
+                             isNoSuchThingError )
 
 -- monadio-plus ------------------------
 
-import MonadIO.Error.CreateProcError  ( ProcError )
-import MonadIO.Error.ProcExitError    ( ProcExitError, _ProcExitError
-                                      , stdErr, stdOut )
-import MonadIO.File                   ( devnull )
-import MonadIO.Process.CmdSpec        ( CmdArgs( CmdArgs ), CmdExe( CmdExe )
-                                      , cmdArgs, cmdExe, expExitVal, mkCmd )
-import MonadIO.Process.ExitInfo       ( ExitInfo )
-import MonadIO.Process.ExitStatus     ( ExitStatus( ExitVal ), exitVal )
-import MonadIO.Process.MakeProc       ( MakeProc )
-import MonadIO.Process.OutputHandles  ( OutputHandles )
-import MonadIO.Process.ToMaybeTexts   ( ToMaybeTexts )
-import MonadIO.Temp                   ( testsWithTempfile )
+import MonadIO.Error.CreateProcError ( ProcError )
+import MonadIO.Error.ProcExitError   ( ProcExitError, _ProcExitError, stdErr,
+                                       stdOut )
+import MonadIO.File                  ( devnull )
+import MonadIO.Process.CmdSpec       ( CmdArgs(CmdArgs), CmdExe(CmdExe),
+                                       cmdArgs, cmdExe, expExitVal, mkCmd )
+import MonadIO.Process.ExitInfo      ( ExitInfo )
+import MonadIO.Process.ExitStatus    ( ExitStatus(ExitVal), exitVal )
+import MonadIO.Process.MakeProc      ( MakeProc )
+import MonadIO.Process.OutputHandles ( OutputHandles )
+import MonadIO.Process.ToMaybeTexts  ( ToMaybeTexts )
+import MonadIO.Temp                  ( testsWithTempfile )
 
 -- mtl ---------------------------------
 
-import Control.Monad.Reader  ( runReaderT )
+import Control.Monad.Reader ( runReaderT )
 
 -- prettyprinter -----------------------
 
-import Prettyprinter              ( layoutCompact )
-import Prettyprinter.Render.Text  ( renderStrict )
+import Prettyprinter             ( layoutCompact )
+import Prettyprinter.Render.Text ( renderStrict )
 
 -- tasty-hunit -------------------------
 
-import Test.Tasty.HUnit  ( Assertion, assertBool, assertEqual, assertFailure )
+import Test.Tasty.HUnit ( Assertion, assertBool, assertEqual, assertFailure )
 
 -- tasty-plus --------------------------
 
-import TastyPlus  ( (≟), assertIOError, assertJust )
+import TastyPlus ( assertIOError, assertJust, (≟) )
 
 -- text --------------------------------
 
-import Data.Text  ( isInfixOf, isSuffixOf, unlines, unpack )
+import Data.Text ( isInfixOf, isSuffixOf, unlines, unpack )
 
 -- text-icu ----------------------------
 
-import qualified  Data.Text.ICU
-import Data.Text.ICU  ( Regex, find, regex )
+import Data.Text.ICU ( Regex, find, regex )
+import Data.Text.ICU qualified
 
 ------------------------------------------------------------
 --                     local imports                      --
 ------------------------------------------------------------
 
-import qualified  MockIOPlus.Paths  as  Paths
+import MockIOPlus.Paths qualified as Paths
 
-import MockIO.Process                ( ꙩ, sysN, system )
-import MockIO.Process.CmdRW          ( CmdRW( CmdR ) )
-import MockIO.Process.OutputDefault  ( OutputDefault )
-import MockIO.Process.MLCmdSpec      ( MLCmdSpec )
-import MockIO.Process.MLMakeIStream  ( MLMakeIStream )
+import MockIO.Process               ( sysN, system, ꙩ )
+import MockIO.Process.CmdRW         ( CmdRW(CmdR) )
+import MockIO.Process.MLCmdSpec     ( MLCmdSpec )
+import MockIO.Process.MLMakeIStream ( MLMakeIStream )
+import MockIO.Process.OutputDefault ( OutputDefault )
 
 --------------------------------------------------------------------------------
 
@@ -253,10 +254,10 @@ ioTests nm s xs =
 
 ----------------------------------------
 
-data ProcResult = ProcResult { exit ∷ ExitInfo
-                             , out  ∷ 𝕋
-                             , err  ∷ 𝕋
-                             , log  ∷ Log MockIOClass
+data ProcResult = ProcResult { exit :: ExitInfo
+                             , out  :: 𝕋
+                             , err  :: 𝕋
+                             , log  :: Log MockIOClass
                              }
 
 mkProcResult ∷ ((ExitInfo, (𝕋,𝕋)), Log MockIOClass) → ProcResult
@@ -384,7 +385,7 @@ procTests =
                 testCase "openFd" $
                   assertIOError (assertJust (≟ exp) ∘ ioeErrorString) grepz
             , testCase "file not found" $
-                assertIOError (assertJust (≟ "openFd") ∘ ioeLocation) grepz
+                assertIOError (assertJust (≟ "openFdAt") ∘ ioeLocation) grepz
             ]
       ]
 
